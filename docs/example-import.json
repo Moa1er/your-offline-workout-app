@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "exportedAt": "2026-08-11T22:00:00Z",
+  "app": {
+    "name": "Progressive Workout Tracker",
+    "version": "1.0.0"
+  },
+  "settings": {
+    "weightUnit": "kg",
+    "theme": "dark",
+    "defaultSetRestSeconds": 120,
+    "defaultExerciseRestSeconds": 120,
+    "keepScreenAwake": true,
+    "hapticFeedback": true,
+    "timerVibration": true,
+    "timerSound": true,
+    "showRir": true
+  },
+  "exercises": [
+    {
+      "id": "exercise_chest_press_machine",
+      "name": "Chest Press - Machine",
+      "primaryMuscle": "CHEST",
+      "secondaryMuscles": ["TRICEPS", "FRONT_DELTS"],
+      "equipment": "MACHINE",
+      "category": "HORIZONTAL_PUSH",
+      "trackingType": "WEIGHT_REPS",
+      "notes": "Seat setting level 4",
+      "archived": false
+    },
+    {
+      "id": "exercise_lat_pulldown",
+      "name": "Lat Pulldown - Cable",
+      "primaryMuscle": "LATS",
+      "secondaryMuscles": ["BICEPS", "BACK"],
+      "equipment": "CABLE",
+      "category": "VERTICAL_PULL",
+      "trackingType": "WEIGHT_REPS",
+      "notes": "Wide grip bar",
+      "archived": false
+    },
+    {
+      "id": "exercise_shoulder_press",
+      "name": "Shoulder Press",
+      "primaryMuscle": "FRONT_DELTS",
+      "secondaryMuscles": ["TRICEPS", "SIDE_DELTS"],
+      "equipment": "DUMBBELL",
+      "category": "VERTICAL_PUSH",
+      "trackingType": "WEIGHT_REPS",
+      "notes": "Controlled tempo",
+      "archived": false
+    }
+  ],
+  "workoutTemplates": [
+    {
+      "id": "template_full_upper_body",
+      "name": "Full Upper Body",
+      "description": "Comprehensive upper body template",
+      "exercises": [
+        {
+          "exerciseId": "exercise_chest_press_machine",
+          "order": 1,
+          "targetSets": 3,
+          "repMin": 6,
+          "repMax": 10,
+          "targetRir": 2,
+          "restBetweenSetsSeconds": 150,
+          "restAfterExerciseSeconds": 120,
+          "notes": "Focus on chest contraction"
+        },
+        {
+          "exerciseId": "exercise_lat_pulldown",
+          "order": 2,
+          "targetSets": 3,
+          "repMin": 6,
+          "repMax": 10,
+          "targetRir": 2,
+          "restBetweenSetsSeconds": 150,
+          "restAfterExerciseSeconds": 120,
+          "notes": "Pull to upper chest"
+        },
+        {
+          "exerciseId": "exercise_shoulder_press",
+          "order": 3,
+          "targetSets": 3,
+          "repMin": 6,
+          "repMax": 10,
+          "targetRir": 2,
+          "restBetweenSetsSeconds": 120,
+          "restAfterExerciseSeconds": 120,
+          "notes": "Neutral grip"
+        }
+      ]
+    }
+  ],
+  "workoutSessions": [
+    {
+      "id": "session_2026_08_09_001",
+      "templateId": "template_full_upper_body",
+      "name": "Full Upper Body",
+      "startedAt": "2026-08-09T17:00:00-04:00",
+      "finishedAt": "2026-08-09T18:07:00-04:00",
+      "notes": "Great session, felt strong on chest press",
+      "exercises": [
+        {
+          "exerciseId": "exercise_chest_press_machine",
+          "order": 1,
+          "notes": null,
+          "sets": [
+            {
+              "id": "set_20260809_01_01",
+              "setNumber": 1,
+              "type": "WORKING",
+              "weightKg": 61.0,
+              "reps": 10,
+              "rir": 2,
+              "completed": true
+            },
+            {
+              "id": "set_20260809_01_02",
+              "setNumber": 2,
+              "type": "WORKING",
+              "weightKg": 61.0,
+              "reps": 10,
+              "rir": 1,
+              "completed": true
+            },
+            {
+              "id": "set_20260809_01_03",
+              "setNumber": 3,
+              "type": "WORKING",
+              "weightKg": 61.0,
+              "reps": 8,
+              "rir": 1,
+              "completed": true
+            }
+          ]
+        },
+        {
+          "exerciseId": "exercise_lat_pulldown",
+          "order": 2,
+          "notes": null,
+          "sets": [
+            {
+              "id": "set_20260809_02_01",
+              "setNumber": 1,
+              "type": "WORKING",
+              "weightKg": 55.0,
+              "reps": 10,
+              "rir": 2,
+              "completed": true
+            },
+            {
+              "id": "set_20260809_02_02",
+              "setNumber": 2,
+              "type": "WORKING",
+              "weightKg": 55.0,
+              "reps": 9,
+              "rir": 1,
+              "completed": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "session_2026_08_11_001",
+      "templateId": "template_full_upper_body",
+      "name": "Full Upper Body",
+      "startedAt": "2026-08-11T17:15:00-04:00",
+      "finishedAt": "2026-08-11T18:19:00-04:00",
+      "notes": "Progressive overload target reached on set 1 & 2",
+      "exercises": [
+        {
+          "exerciseId": "exercise_chest_press_machine",
+          "order": 1,
+          "notes": null,
+          "sets": [
+            {
+              "id": "set_20260811_01_01",
+              "setNumber": 1,
+              "type": "WORKING",
+              "weightKg": 61.0,
+              "reps": 10,
+              "rir": 2,
+              "completed": true
+            },
+            {
+              "id": "set_20260811_01_02",
+              "setNumber": 2,
+              "type": "WORKING",
+              "weightKg": 61.0,
+              "reps": 10,
+              "rir": 1,
+              "completed": true
+            },
+            {
+              "id": "set_20260811_01_03",
+              "setNumber": 3,
+              "type": "WORKING",
+              "weightKg": 61.0,
+              "reps": 9,
+              "rir": 1,
+              "completed": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
