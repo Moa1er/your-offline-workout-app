@@ -1,4 +1,4 @@
-﻿# 🏋️ Progressive Workout Tracker
+# 🏋️ Progressive Workout Tracker
 
 **Progressive Workout Tracker** is a clean, 100% offline, privacy-first workout logger for Android. Built with React Native, Expo, and local SQLite.
 
@@ -30,13 +30,17 @@ No accounts, no cloud sync, no subscriptions, and zero ads. Everything stays sec
 |---|---|---|
 | ![Home](docs/screenshots/home.png) | ![Active workout](docs/screenshots/active-workout.png) | ![Rest timer](docs/screenshots/rest-timer.png) |
 
-| Templates & Comparison | History & Duration Editing | Progress Dashboard |
+| Templates & Comparison | Template Editor | Exercise Picker |
 |---|---|---|
-| ![Templates](docs/screenshots/templates.png) | ![History](docs/screenshots/history.png) | ![Progress](docs/screenshots/progress.png) |
+| ![Templates](docs/screenshots/templates.png) | ![Template Editor](docs/screenshots/template-editor.png) | ![Exercise Picker](docs/screenshots/exercise-picker.png) |
 
-| Template Editor | Settings & Backup Tools |
-|---|---|
-| ![Template Editor](docs/screenshots/template-editor.png) | ![Settings](docs/screenshots/settings.png) |
+| Session Detail | History & Duration Editing | Workout Summary |
+|---|---|---|
+| ![Session Detail](docs/screenshots/session-detail.png) | ![History](docs/screenshots/history.png) | ![Summary](docs/screenshots/summary.png) |
+
+| Progress Dashboard | Volume & Split Charts | Settings & Backup Tools |
+|---|---|---|
+| ![Progress](docs/screenshots/progress.png) | ![Progress Charts](docs/screenshots/progress-charts.png) | ![Settings](docs/screenshots/settings.png) |
 
 ---
 
