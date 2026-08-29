@@ -46,7 +46,7 @@ No accounts, no cloud sync, no subscriptions, and zero ads. Everything stays sec
 
 ## 🚀 Getting Started
 
-1. Download `app-release.apk` from [GitHub Releases](https://github.com/Moa1er/your-offline-workout-app/releases/latest).
+1. Download `workout-app-release.apk` from [GitHub Releases](https://github.com/Moa1er/your-offline-workout-app/releases/latest).
 2. Open the file on your Android device and confirm installation.
 3. Open **Workout App**, select a template or start an empty routine, and log your session.
 
