@@ -51,8 +51,9 @@ export async function generateBackupJson(db: SQLite.SQLiteDatabase): Promise<Wor
       exerciseId: te.exerciseId,
       order: te.order,
       targetSets: te.targetSets,
-      repMin: te.repMin,
-      repMax: te.repMax,
+      targetReps: te.targetReps ?? te.repMax ?? te.repMin ?? 10,
+      repMin: te.repMin ?? te.targetReps ?? 10,
+      repMax: te.repMax ?? te.targetReps ?? 10,
       targetRir: te.targetRir || null,
       restBetweenSetsSeconds: te.restBetweenSetsSeconds,
       restAfterExerciseSeconds: te.restAfterExerciseSeconds,
@@ -226,20 +227,23 @@ export async function importBackupToDatabase(
 
       for (let i = 0; i < tmpl.exercises.length; i++) {
         const te = tmpl.exercises[i];
+        const repsVal = te.targetReps ?? te.repMax ?? te.repMin ?? te.reps ?? 10;
         await db.runAsync(
-          `INSERT INTO workout_template_exercises (id, template_id, exercise_id, exercise_order, target_sets, rep_min, rep_max, target_rir, rest_between_sets_seconds, rest_after_exercise_seconds, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+          `INSERT INTO workout_template_exercises (id, template_id, exercise_id, exercise_order, target_sets, target_reps, rep_min, rep_max, target_rir, rest_between_sets_seconds, rest_after_exercise_seconds, include_in_volume, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
           [
             uuidv4(),
             tmpl.id,
             te.exerciseId,
             te.order || i + 1,
             te.targetSets,
-            te.repMin,
-            te.repMax,
+            repsVal,
+            repsVal,
+            repsVal,
             te.targetRir ?? 2,
-            te.restBetweenSetsSeconds,
-            te.restAfterExerciseSeconds,
+            te.restBetweenSetsSeconds ?? 120,
+            te.restAfterExerciseSeconds ?? 120,
+            1,
             te.notes || null,
           ]
         );
@@ -406,4 +410,160 @@ export async function exportHistoryToHevyCsv(db: SQLite.SQLiteDatabase): Promise
   }
 
   return file.uri;
+}
+
+/**
+ * imports one or more templates from a selected json file directly into database
+ */
+export async function importTemplatesFromJsonFile(
+  db: SQLite.SQLiteDatabase
+): Promise<{ count: number; templateNames: string[] } | null> {
+  const result = await DocumentPicker.getDocumentAsync({
+    type: 'application/json',
+    copyToCacheDirectory: true,
+  });
+
+  if (result.canceled || !result.assets || result.assets.length === 0) {
+    return null;
+  }
+
+  const fileUri = result.assets[0].uri;
+  const content = await new File(fileUri).text();
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error('Selected file is not valid JSON.');
+  }
+
+  const now = new Date().toISOString();
+  const importedNames: string[] = [];
+
+  // extract template list: could be a full backup, an array of templates, or a single template object
+  let templatesToProcess: any[] = [];
+
+  if (Array.isArray(parsed)) {
+    templatesToProcess = parsed;
+  } else if (parsed.workoutTemplates && Array.isArray(parsed.workoutTemplates)) {
+    // full backup format
+    if (parsed.exercises && Array.isArray(parsed.exercises)) {
+      // import exercises first so foreign keys and names resolve
+      for (const ex of parsed.exercises) {
+        await db.runAsync(
+          `INSERT INTO exercises (id, name, primary_muscle, secondary_muscles_json, equipment, category, tracking_type, notes, archived, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             name = excluded.name,
+             primary_muscle = excluded.primary_muscle,
+             secondary_muscles_json = excluded.secondary_muscles_json,
+             equipment = excluded.equipment,
+             category = excluded.category,
+             tracking_type = excluded.tracking_type,
+             notes = excluded.notes,
+             archived = excluded.archived,
+             updated_at = excluded.updated_at;`,
+          [
+            ex.id,
+            ex.name,
+            ex.primaryMuscle || 'OTHER',
+            JSON.stringify(ex.secondaryMuscles || []),
+            ex.equipment || 'MACHINE',
+            ex.category || 'OTHER',
+            ex.trackingType || 'WEIGHT_REPS',
+            ex.notes || null,
+            ex.archived ? 1 : 0,
+            now,
+            now,
+          ]
+        );
+      }
+    }
+    templatesToProcess = parsed.workoutTemplates;
+  } else if (parsed.name && (parsed.exercises || parsed.templateExercises)) {
+    // single template format
+    templatesToProcess = [parsed];
+  } else {
+    throw new Error('JSON file does not contain a recognizable template structure.');
+  }
+
+  await db.withTransactionAsync(async () => {
+    for (const tmpl of templatesToProcess) {
+      if (!tmpl.name) continue;
+      const templateId = tmpl.id || `template_${uuidv4()}`;
+      const templateName = tmpl.name;
+      importedNames.push(templateName);
+
+      await db.runAsync(
+        `INSERT INTO workout_templates (id, name, description, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           description = excluded.description,
+           updated_at = excluded.updated_at;`,
+        [templateId, templateName, tmpl.description || null, tmpl.createdAt || now, now]
+      );
+
+      await db.runAsync('DELETE FROM workout_template_exercises WHERE template_id = ?;', [
+        templateId,
+      ]);
+
+      const exercises = tmpl.exercises || tmpl.templateExercises || [];
+      for (let i = 0; i < exercises.length; i++) {
+        const ex = exercises[i];
+        let exerciseId = ex.exerciseId;
+
+        // if exerciseId is missing or exercise doesn't exist, check or create it by name
+        if (!exerciseId && ex.exerciseName) {
+          const existingEx = await db.getFirstAsync<{ id: string }>(
+            'SELECT id FROM exercises WHERE name = ? COLLATE NOCASE;',
+            [ex.exerciseName]
+          );
+          if (existingEx) {
+            exerciseId = existingEx.id;
+          } else {
+            exerciseId = `exercise_${uuidv4()}`;
+            await db.runAsync(
+              `INSERT INTO exercises (id, name, primary_muscle, equipment, category, tracking_type, created_at, updated_at)
+               VALUES (?, ?, 'OTHER', 'MACHINE', 'OTHER', 'WEIGHT_REPS', ?, ?);`,
+              [exerciseId, ex.exerciseName, now, now]
+            );
+          }
+        }
+
+        if (!exerciseId) continue;
+
+        const setsVal = ex.targetSets || 3;
+        const repsVal = ex.targetReps ?? ex.repMax ?? ex.repMin ?? ex.reps ?? 10;
+        const rirVal = ex.targetRir ?? 2;
+        const restSet = ex.restBetweenSetsSeconds ?? 120;
+        const restEx = ex.restAfterExerciseSeconds ?? 120;
+
+        await db.runAsync(
+          `INSERT INTO workout_template_exercises (id, template_id, exercise_id, exercise_order, target_sets, target_reps, rep_min, rep_max, target_rir, rest_between_sets_seconds, rest_after_exercise_seconds, include_in_volume, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+          [
+            uuidv4(),
+            templateId,
+            exerciseId,
+            ex.order || i + 1,
+            setsVal,
+            repsVal,
+            repsVal,
+            repsVal,
+            rirVal,
+            restSet,
+            restEx,
+            1,
+            ex.notes || null,
+          ]
+        );
+      }
+    }
+  });
+
+  return {
+    count: importedNames.length,
+    templateNames: importedNames,
+  };
 }

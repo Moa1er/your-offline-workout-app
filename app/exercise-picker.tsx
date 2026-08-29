@@ -1,4 +1,4 @@
-// modal for selecting and searching exercises to add to session
+﻿// modal for selecting and searching exercises to add to session
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -13,14 +13,16 @@ import {
 import { useRouter } from 'expo-router';
 import { useDatabase } from '../src/context/DatabaseContext';
 import { useWorkout } from '../src/context/WorkoutContext';
+import { useAppTheme } from '../src/context/ThemeContext';
 import { Exercise } from '../src/types/workout';
 import { getAllExercises } from '../src/database/queries/exerciseQueries';
 import { addSetToSessionExercise } from '../src/database/queries/sessionQueries';
-import { v4 as uuidv4 } from 'uuid';
+import { generateId as uuidv4 } from '../src/utils/uuid';
 
 export default function ExercisePickerScreen() {
   const { db, isReady } = useDatabase();
   const { activeSession, refreshActiveSession } = useWorkout();
+  const { colors } = useAppTheme();
   const router = useRouter();
 
   const [exercises, setExercises] = useState<Exercise[]>([]);
@@ -49,8 +51,8 @@ export default function ExercisePickerScreen() {
 
     // insert session exercise
     await db.runAsync(
-      `INSERT INTO workout_session_exercises (id, session_id, exercise_id, exercise_order)
-       VALUES (?, ?, ?, ?);`,
+      `INSERT INTO workout_session_exercises (id, session_id, exercise_id, exercise_order, include_in_volume)
+       VALUES (?, ?, ?, ?, 1);`,
       [seId, activeSession.id, exercise.id, order]
     );
 
@@ -63,20 +65,23 @@ export default function ExercisePickerScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#6366f1" />
+      <View style={[styles.centerContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* search input */}
-      <View style={styles.searchBox}>
+      <View style={[styles.searchBox, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <TextInput
-          style={styles.searchInput}
+          style={[
+            styles.searchInput,
+            { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text },
+          ]}
           placeholder="Search exercises..."
-          placeholderTextColor="#64748b"
+          placeholderTextColor={colors.textSubtle}
           value={search}
           onChangeText={setSearch}
         />
@@ -87,16 +92,16 @@ export default function ExercisePickerScreen() {
         {filteredExercises.map((ex) => (
           <TouchableOpacity
             key={ex.id}
-            style={styles.exCard}
+            style={[styles.exCard, { backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={() => handleSelectExercise(ex)}
           >
             <View style={styles.exInfo}>
-              <Text style={styles.exName}>{ex.name}</Text>
-              <Text style={styles.exSub}>
+              <Text style={[styles.exName, { color: colors.text }]}>{ex.name}</Text>
+              <Text style={[styles.exSub, { color: colors.secondary }]}>
                 {ex.primaryMuscle} • {ex.equipment}
               </Text>
             </View>
-            <Text style={styles.addIcon}>+</Text>
+            <Text style={[styles.addIcon, { color: colors.primary }]}>+</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -107,22 +112,16 @@ export default function ExercisePickerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
   },
   searchBox: {
     padding: 16,
-    backgroundColor: '#1e293b',
     borderBottomWidth: 1,
-    borderBottomColor: '#334155',
   },
   searchInput: {
-    backgroundColor: '#0f172a',
-    color: '#f8fafc',
     borderRadius: 10,
     padding: 12,
     fontSize: 15,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   content: {
     padding: 16,
@@ -132,10 +131,8 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0f172a',
   },
   exCard: {
-    backgroundColor: '#1e293b',
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
@@ -143,24 +140,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: '#334155',
   },
   exInfo: {
     flex: 1,
   },
   exName: {
-    color: '#f8fafc',
     fontSize: 16,
     fontWeight: '700',
   },
   exSub: {
-    color: '#38bdf8',
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
   },
   addIcon: {
-    color: '#6366f1',
     fontSize: 24,
     fontWeight: '800',
   },

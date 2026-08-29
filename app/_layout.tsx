@@ -5,16 +5,61 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DatabaseProvider } from '../src/context/DatabaseContext';
-import { SettingsProvider, useSettings } from '../src/context/SettingsContext';
+import { SettingsProvider } from '../src/context/SettingsContext';
+import { ThemeProvider, useAppTheme } from '../src/context/ThemeContext';
 import { WorkoutProvider } from '../src/context/WorkoutContext';
 import { PrToastBanner } from '../src/components/PrToastBanner';
 import { setupNotificationPermissions } from '../src/services/notifications';
 
+import { AlertProvider } from '../src/context/AlertContext';
+
 function ThemedStatusBar() {
-  const { settings } = useSettings();
-  const style =
-    settings.theme === 'light' ? 'dark' : settings.theme === 'system' ? 'auto' : 'light';
-  return <StatusBar style={style} />;
+  const { isDark } = useAppTheme();
+  return <StatusBar style={isDark ? 'light' : 'dark'} />;
+}
+
+function AppNavigator() {
+  const { colors } = useAppTheme();
+
+  return (
+    <>
+      <ThemedStatusBar />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.headerBg },
+          headerTintColor: colors.text,
+          headerTitleStyle: { fontWeight: '700' },
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      >
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="active-workout"
+          options={{ title: 'Active Workout', headerBackVisible: false }}
+        />
+        <Stack.Screen
+          name="workout-summary"
+          options={{ title: 'Workout Complete', headerLeft: () => null }}
+        />
+        <Stack.Screen
+          name="session-detail"
+          options={{ title: 'Session Detail' }}
+        />
+        <Stack.Screen
+          name="template-editor"
+          options={{ title: 'Template Editor' }}
+        />
+        <Stack.Screen
+          name="exercise-detail"
+          options={{ title: 'Exercise Analytics' }}
+        />
+        <Stack.Screen
+          name="exercise-picker"
+          options={{ title: 'Select Exercise', presentation: 'modal' }}
+        />
+      </Stack>
+    </>
+  );
 }
 
 export default function RootLayout() {
@@ -29,44 +74,13 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <DatabaseProvider>
         <SettingsProvider>
-          <WorkoutProvider>
-            <ThemedStatusBar />
-            <PrToastBanner />
-            <Stack
-              screenOptions={{
-                headerStyle: { backgroundColor: '#0f172a' },
-                headerTintColor: '#f8fafc',
-                headerTitleStyle: { fontWeight: '700' },
-                contentStyle: { backgroundColor: '#0f172a' },
-              }}
-            >
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen
-                name="active-workout"
-                options={{ title: 'Active Workout', headerBackVisible: false }}
-              />
-              <Stack.Screen
-                name="workout-summary"
-                options={{ title: 'Workout Complete', headerLeft: () => null }}
-              />
-              <Stack.Screen
-                name="session-detail"
-                options={{ title: 'Session Detail' }}
-              />
-              <Stack.Screen
-                name="template-editor"
-                options={{ title: 'Template Editor' }}
-              />
-              <Stack.Screen
-                name="exercise-detail"
-                options={{ title: 'Exercise Analytics' }}
-              />
-              <Stack.Screen
-                name="exercise-picker"
-                options={{ title: 'Select Exercise', presentation: 'modal' }}
-              />
-            </Stack>
-          </WorkoutProvider>
+          <ThemeProvider>
+            <AlertProvider>
+              <WorkoutProvider>
+                <AppNavigator />
+              </WorkoutProvider>
+            </AlertProvider>
+          </ThemeProvider>
         </SettingsProvider>
       </DatabaseProvider>
     </SafeAreaProvider>

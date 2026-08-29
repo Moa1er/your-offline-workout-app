@@ -1,25 +1,26 @@
-// bottom tabs layout navigation setup
-
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Text } from 'react-native';
+import { useAppTheme } from '../../src/context/ThemeContext';
 
 export default function TabLayout() {
+  const { colors } = useAppTheme();
+
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: '#0f172a' },
-        headerTintColor: '#f8fafc',
+        headerStyle: { backgroundColor: colors.headerBg },
+        headerTintColor: colors.text,
         headerTitleStyle: { fontWeight: '800' },
         tabBarStyle: {
-          backgroundColor: '#0f172a',
-          borderTopColor: '#1e293b',
+          backgroundColor: colors.tabBarBg,
+          borderTopColor: colors.tabBarBorder,
           height: 60,
           paddingBottom: 8,
           paddingTop: 8,
         },
-        tabBarActiveTintColor: '#6366f1',
-        tabBarInactiveTintColor: '#64748b',
+        tabBarActiveTintColor: colors.tabActive,
+        tabBarInactiveTintColor: colors.tabInactive,
         tabBarLabelStyle: {
           fontSize: 10,
           fontWeight: '700',

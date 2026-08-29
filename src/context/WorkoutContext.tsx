@@ -5,6 +5,7 @@ import { AppState, AppStateStatus, Alert } from 'react-native';
 import { WorkoutSession, WorkoutSet } from '../types/workout';
 import { useDatabase } from './DatabaseContext';
 import { useSettings } from './SettingsContext';
+import { useAppAlert } from './AlertContext';
 import {
   getActiveWorkoutSession,
   createActiveWorkoutFromTemplate,
@@ -20,7 +21,10 @@ import { checkSetForPrs } from '../utils/prDetector';
 import { calculateRemainingSeconds, ActiveTimerState, createRestTimer } from '../utils/timer';
 import {
   scheduleRestNotification,
+  updateRestTimerLiveNotification,
+  showRestTimerFinishedNotification,
   cancelNotification,
+  cancelAllNotifications,
   triggerSetHaptic,
   triggerTimerFinishedHaptic,
 } from '../services/notifications';
@@ -45,6 +49,7 @@ interface WorkoutContextType {
   deleteSet: (setId: string) => Promise<void>;
   updateExerciseNotes: (sessionExerciseId: string, notes: string) => Promise<void>;
   updateExerciseRestTimers: (sessionExerciseId: string, restBetweenSetsSeconds?: number, restAfterExerciseSeconds?: number) => Promise<void>;
+  toggleExerciseIncludeInVolume: (sessionExerciseId: string) => Promise<void>;
   finishCurrentWorkout: (notes?: string) => Promise<void>;
   discardCurrentWorkout: () => Promise<void>;
   addTimerSeconds: (seconds: number) => void;
@@ -66,6 +71,7 @@ const WorkoutContext = createContext<WorkoutContextType>({
   deleteSet: async () => {},
   updateExerciseNotes: async () => {},
   updateExerciseRestTimers: async () => {},
+  toggleExerciseIncludeInVolume: async () => {},
   finishCurrentWorkout: async () => {},
   discardCurrentWorkout: async () => {},
   addTimerSeconds: () => {},
@@ -77,6 +83,7 @@ const WorkoutContext = createContext<WorkoutContextType>({
 export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { db, isReady } = useDatabase();
   const { settings } = useSettings();
+  const { showAlert, showConfirm } = useAppAlert();
 
   const [activeSession, setActiveSession] = useState<WorkoutSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -105,6 +112,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
       notes?: string | null;
       restBetweenSetsSeconds?: number;
       restAfterExerciseSeconds?: number;
+      includeInVolume?: boolean;
     }>()
   );
 
@@ -132,7 +140,12 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const scheduleExerciseSave = (
     sessionExerciseId: string,
-    updates: { notes?: string | null; restBetweenSetsSeconds?: number; restAfterExerciseSeconds?: number }
+    updates: {
+      notes?: string | null;
+      restBetweenSetsSeconds?: number;
+      restAfterExerciseSeconds?: number;
+      includeInVolume?: boolean;
+    }
   ) => {
     const current = pendingExerciseSavesRef.current.get(sessionExerciseId) || {};
     pendingExerciseSavesRef.current.set(sessionExerciseId, { ...current, ...updates });
@@ -206,7 +219,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   }, [isReady, db]);
 
-  // timer tick interval
+  // timer tick interval updating every second in notification bar
   useEffect(() => {
     if (!timerState) {
       return;
@@ -216,21 +229,25 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const remaining = calculateRemainingSeconds(timerState.endsAt);
       setRemainingSeconds(remaining);
 
-      if (remaining <= 0) {
+      if (remaining > 0) {
+        // live notification bar update every second
+        updateRestTimerLiveNotification(remaining, timerState.exerciseName);
+      } else {
         if (settings.hapticFeedback) {
           triggerTimerFinishedHaptic();
         }
-        if (notificationIdRef.current) {
-          cancelNotification(notificationIdRef.current);
-          notificationIdRef.current = null;
-        }
+        showRestTimerFinishedNotification(timerState.exerciseName, {
+          sound: settings.timerSound,
+          vibrate: settings.timerVibration,
+        });
         setTimerState(null);
       }
     };
 
+    updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [timerState, settings.hapticFeedback]);
+  }, [timerState, settings.hapticFeedback, settings.timerSound, settings.timerVibration]);
 
   // recover timer when app state changes (e.g. background -> active)
   useEffect(() => {
@@ -239,10 +256,10 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const remaining = calculateRemainingSeconds(timerState.endsAt);
         setRemainingSeconds(remaining);
         if (remaining <= 0) {
-          if (notificationIdRef.current) {
-            cancelNotification(notificationIdRef.current);
-            notificationIdRef.current = null;
-          }
+          showRestTimerFinishedNotification(timerState.exerciseName, {
+            sound: settings.timerSound,
+            vibrate: settings.timerVibration,
+          });
           setTimerState(null);
         }
       }
@@ -250,7 +267,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription.remove();
-  }, [timerState]);
+  }, [timerState, settings.timerSound, settings.timerVibration]);
 
   const startWorkout = async (templateId?: string): Promise<WorkoutSession | null> => {
     if (!db) return null;
@@ -259,30 +276,33 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const existing = activeSessionRef.current;
     if (existing) {
       return new Promise<WorkoutSession | null>((resolve) => {
-        Alert.alert(
+        showConfirm(
           'Workout in Progress',
-          'You already have an active workout. Discard it and start a new one?',
-          [
-            { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
-            {
-              text: 'Discard & Start New',
-              style: 'destructive',
-              onPress: async () => {
-                try {
-                  await discardActiveWorkout(db, existing.id);
-                  setActiveSessionRef(null);
-                  skipTimer();
-                  const newSession = await createActiveWorkoutFromTemplate(db, templateId);
-                  setActiveSessionRef(newSession);
-                  resolve(newSession);
-                } catch (err: any) {
-                  console.error('error starting workout:', err);
-                  Alert.alert('Start Workout Error', err?.message || 'Failed to start workout session');
-                  resolve(null);
-                }
-              },
-            },
-          ]
+          'You already have an active workout in progress. Discard it and start a new one?',
+          async () => {
+            try {
+              await discardActiveWorkout(db, existing.id);
+              setActiveSessionRef(null);
+              skipTimer();
+              const newSession = await createActiveWorkoutFromTemplate(db, templateId);
+              setActiveSessionRef(newSession);
+              resolve(newSession);
+            } catch (err: any) {
+              console.error('error starting workout:', err);
+              showAlert({
+                title: 'Start Workout Error',
+                message: err?.message || 'Failed to start workout session',
+                icon: '⚠️',
+              });
+              resolve(null);
+            }
+          },
+          {
+            confirmText: 'Discard & Start New',
+            cancelText: 'Resume Active',
+            isDestructive: true,
+            icon: '⚠️',
+          }
         );
       });
     }
@@ -294,7 +314,11 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return newSession;
     } catch (err: any) {
       console.error('error starting workout:', err);
-      Alert.alert('Start Workout Error', err?.message || 'Failed to start workout session');
+      showAlert({
+        title: 'Start Workout Error',
+        message: err?.message || 'Failed to start workout session',
+        icon: '⚠️',
+      });
       return null;
     } finally {
       setIsLoading(false);
@@ -350,6 +374,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
       await cancelNotification(notificationIdRef.current);
       notificationIdRef.current = null;
     }
+    await cancelAllNotifications();
     setTimerState(null);
     setRemainingSeconds(0);
   };
@@ -440,6 +465,9 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (restDuration > 0) {
         startRestTimer(restDuration, exerciseName, restType);
       }
+    } else {
+      // cancel running rest timer if set was unchecked
+      skipTimer();
     }
   };
 
@@ -546,6 +574,23 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   };
 
+  const toggleExerciseIncludeInVolume = async (sessionExerciseId: string) => {
+    const session = activeSessionRef.current;
+    if (!session || !db) return;
+
+    let nextVal = true;
+    const updatedExercises = session.exercises.map((e) => {
+      if (e.id === sessionExerciseId) {
+        nextVal = e.includeInVolume === false;
+        return { ...e, includeInVolume: nextVal };
+      }
+      return e;
+    });
+
+    setActiveSessionRef({ ...session, exercises: updatedExercises });
+    scheduleExerciseSave(sessionExerciseId, { includeInVolume: nextVal });
+  };
+
   const finishCurrentWorkout = async (notes?: string) => {
     const session = activeSessionRef.current;
     if (!session || !db) return;
@@ -593,6 +638,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
         deleteSet,
         updateExerciseNotes,
         updateExerciseRestTimers,
+        toggleExerciseIncludeInVolume,
         finishCurrentWorkout,
         discardCurrentWorkout,
         addTimerSeconds,

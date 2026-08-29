@@ -76,12 +76,14 @@ export interface TemplateExercise {
   exerciseName?: string;
   order: number;
   targetSets: number;
-  repMin: number;
-  repMax: number;
+  targetReps: number;
+  repMin?: number;
+  repMax?: number;
   targetRir?: number | null;
   restBetweenSetsSeconds: number;
   restAfterExerciseSeconds: number;
   notes?: string | null;
+  includeInVolume?: boolean;
 }
 
 export interface WorkoutTemplate {
@@ -116,6 +118,7 @@ export interface SessionExercise {
   notes?: string | null;
   restBetweenSetsSeconds?: number;
   restAfterExerciseSeconds?: number;
+  includeInVolume?: boolean;
   sets: WorkoutSet[];
   previousPerformance?: WorkoutSet[];
 }
@@ -154,6 +157,7 @@ export interface PersonalRecord {
 export interface UserSettings {
   weightUnit: 'kg' | 'lb';
   theme: 'dark' | 'light' | 'system';
+  themePalette?: 'cyber' | 'neutral';
   defaultSetRestSeconds: number;
   defaultExerciseRestSeconds: number;
   keepScreenAwake: boolean;

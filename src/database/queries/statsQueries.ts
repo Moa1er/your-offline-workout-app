@@ -109,7 +109,7 @@ export async function getProgressOverviewStats(
     const sets = await db.getAllAsync<any>(
       `SELECT s.* FROM sets s
        JOIN workout_session_exercises wse ON s.session_exercise_id = wse.id
-       WHERE wse.session_id = ? AND s.completed = 1;`,
+       WHERE wse.session_id = ? AND s.completed = 1 AND COALESCE(wse.include_in_volume, 1) = 1;`,
       [s.id]
     );
 
@@ -173,7 +173,7 @@ export async function getOverallWorkoutVolumeHistory(
       `SELECT s.weight_kg, s.reps, s.type
        FROM sets s
        JOIN workout_session_exercises wse ON s.session_exercise_id = wse.id
-       WHERE wse.session_id = ? AND s.completed = 1;`,
+       WHERE wse.session_id = ? AND s.completed = 1 AND COALESCE(wse.include_in_volume, 1) = 1;`,
       [s.id]
     );
 

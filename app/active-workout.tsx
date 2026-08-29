@@ -1,4 +1,4 @@
-// active workout logging screen optimized for fast gym set entry
+// active workout logging screen optimized for fast gym set entry with volume calculation
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -12,13 +12,16 @@ import {
 import { useRouter } from 'expo-router';
 import { useWorkout } from '../src/context/WorkoutContext';
 import { useSettings } from '../src/context/SettingsContext';
+import { useAppTheme } from '../src/context/ThemeContext';
+import { useAppAlert } from '../src/context/AlertContext';
 import { ExerciseSetTable } from '../src/components/ExerciseSetTable';
 import { RestTimerOverlay } from '../src/components/RestTimerOverlay';
 import { calculateElapsedTime } from '../src/utils/timer';
+import { calculateSetVolume, formatWeight } from '../src/utils/calculations';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 // isolated elapsed time component to prevent full-screen re-renders every second
-const WorkoutElapsedTime: React.FC<{ startedAt: string }> = React.memo(({ startedAt }) => {
+const WorkoutElapsedTime: React.FC<{ startedAt: string; color: string }> = React.memo(({ startedAt, color }) => {
   const [elapsedText, setElapsedText] = useState(() => calculateElapsedTime(startedAt));
 
   useEffect(() => {
@@ -30,13 +33,15 @@ const WorkoutElapsedTime: React.FC<{ startedAt: string }> = React.memo(({ starte
     return () => clearInterval(interval);
   }, [startedAt]);
 
-  return <Text style={styles.elapsedText}>{elapsedText} elapsed</Text>;
+  return <Text style={[styles.elapsedText, { color }]}>{elapsedText} elapsed</Text>;
 });
 WorkoutElapsedTime.displayName = 'WorkoutElapsedTime';
 
 export default function ActiveWorkoutScreen() {
   const { activeSession, finishCurrentWorkout, discardCurrentWorkout } = useWorkout();
   const { settings } = useSettings();
+  const { colors } = useAppTheme();
+  const { showAlert, showConfirm } = useAppAlert();
   const router = useRouter();
 
   // handle screen awake preference
@@ -51,41 +56,48 @@ export default function ActiveWorkoutScreen() {
 
   if (!activeSession) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.noWorkoutText}>No active workout in progress.</Text>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/(tabs)')}>
-          <Text style={styles.backBtnText}>GO TO HOME</Text>
-        </TouchableOpacity>
+      <View style={[styles.centerContainer, { backgroundColor: colors.background }]}>
+        <Text style={[styles.noWorkoutText, { color: colors.textMuted }]}>No active workout in progress.</Text>
       </View>
     );
   }
 
-  // calculate sets completion progress
+  // calculate sets completion progress and total session volume (filtering included exercises)
   let totalSets = 0;
   let completedSets = 0;
+  let totalSessionVolumeKg = 0;
+
   activeSession.exercises.forEach((se) => {
+    const isIncludedInVol = se.includeInVolume !== false;
     se.sets.forEach((st) => {
       totalSets++;
-      if (st.completed) completedSets++;
+      if (st.completed) {
+        completedSets++;
+        if (isIncludedInVol && st.type !== 'WARMUP') {
+          totalSessionVolumeKg += calculateSetVolume(st.type, st.weightKg, st.reps);
+        }
+      }
     });
   });
 
   const handleFinish = () => {
     if (completedSets < totalSets) {
-      Alert.alert(
-        'Incomplete Workout',
-        'Some planned sets are incomplete. Finish workout anyway?',
-        [
-          { text: 'Cancel', style: 'cancel' },
+      showAlert({
+        title: 'Incomplete Workout',
+        message: `${totalSets - completedSets} planned set(s) are still incomplete. Finish workout anyway?`,
+        icon: '⚠️',
+        buttons: [
+          { text: 'Keep Going', style: 'cancel' },
           {
             text: 'Finish Workout',
+            style: 'default',
             onPress: async () => {
               await finishCurrentWorkout();
               router.replace('/workout-summary');
             },
           },
-        ]
-      );
+        ],
+      });
     } else {
       finishCurrentWorkout().then(() => {
         router.replace('/workout-summary');
@@ -94,39 +106,41 @@ export default function ActiveWorkoutScreen() {
   };
 
   const handleDiscard = () => {
-    Alert.alert('Discard Workout', 'Are you sure you want to discard this workout session?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Discard',
-        style: 'destructive',
-        onPress: async () => {
-          await discardCurrentWorkout();
-          router.replace('/(tabs)');
-        },
+    showConfirm(
+      'Discard Workout',
+      'Are you sure you want to discard this workout? All logged sets for this session will be permanently deleted.',
+      async () => {
+        await discardCurrentWorkout();
+        router.replace('/(tabs)');
       },
-    ]);
+      {
+        confirmText: 'Discard Workout',
+        isDestructive: true,
+        icon: '⚠️',
+      }
+    );
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.content} removeClippedSubviews={true}>
         {/* session stats header banner */}
-        <View style={styles.headerBanner}>
-          <Text style={styles.workoutName}>{activeSession.name.toUpperCase()}</Text>
-          <WorkoutElapsedTime startedAt={activeSession.startedAt} />
+        <View style={[styles.headerBanner, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.workoutName, { color: colors.text }]}>{activeSession.name.toUpperCase()}</Text>
+          <WorkoutElapsedTime startedAt={activeSession.startedAt} color={colors.secondary} />
 
-          <View style={styles.statsRow}>
+          <View style={[styles.statsRow, { backgroundColor: colors.cardAlt }]}>
             <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Exercises</Text>
-              <Text style={styles.statValue}>
-                {activeSession.exercises.length}
+              <Text style={[styles.statLabel, { color: colors.textMuted }]}>Sets Completed</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {completedSets} / {totalSets}
               </Text>
             </View>
 
             <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Sets Completed</Text>
-              <Text style={styles.statValue}>
-                {completedSets} / {totalSets}
+              <Text style={[styles.statLabel, { color: colors.textMuted }]}>Volume</Text>
+              <Text style={[styles.statValue, { color: colors.primary }]}>
+                {formatWeight(Math.round(totalSessionVolumeKg), settings.weightUnit)}
               </Text>
             </View>
           </View>
@@ -139,20 +153,26 @@ export default function ActiveWorkoutScreen() {
 
         {/* add exercise to session button */}
         <TouchableOpacity
-          style={styles.addExerciseBtn}
+          style={[styles.addExerciseBtn, { backgroundColor: colors.card, borderColor: colors.primary }]}
           onPress={() => router.push('/exercise-picker')}
         >
-          <Text style={styles.addExerciseText}>+ ADD EXERCISE TO SESSION</Text>
+          <Text style={[styles.addExerciseText, { color: colors.primary }]}>+ ADD EXERCISE TO SESSION</Text>
         </TouchableOpacity>
 
         {/* finish & discard buttons */}
         <View style={styles.bottomButtonRow}>
-          <TouchableOpacity style={styles.finishBtn} onPress={handleFinish}>
-            <Text style={styles.finishText}>FINISH WORKOUT</Text>
+          <TouchableOpacity
+            style={[styles.finishBtn, { backgroundColor: colors.primary }]}
+            onPress={handleFinish}
+          >
+            <Text style={[styles.finishText, { color: colors.primaryText }]}>FINISH WORKOUT</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.discardBtn} onPress={handleDiscard}>
-            <Text style={styles.discardText}>DISCARD</Text>
+          <TouchableOpacity
+            style={[styles.discardBtn, { backgroundColor: colors.cardAlt, borderColor: colors.danger, borderWidth: 1 }]}
+            onPress={handleDiscard}
+          >
+            <Text style={[styles.discardText, { color: colors.danger }]}>DISCARD</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -166,7 +186,6 @@ export default function ActiveWorkoutScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
   },
   content: {
     padding: 16,
@@ -176,40 +195,32 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0f172a',
     padding: 24,
   },
   noWorkoutText: {
-    color: '#94a3b8',
     fontSize: 16,
     marginBottom: 16,
   },
   backBtn: {
-    backgroundColor: '#6366f1',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 8,
   },
   backBtnText: {
-    color: '#ffffff',
     fontWeight: '800',
   },
   headerBanner: {
-    backgroundColor: '#1e293b',
     borderRadius: 14,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   workoutName: {
-    color: '#f8fafc',
     fontSize: 20,
     fontWeight: '900',
     letterSpacing: 0.5,
   },
   elapsedText: {
-    color: '#38bdf8',
     fontSize: 14,
     fontWeight: '700',
     marginTop: 2,
@@ -217,7 +228,6 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: 'row',
-    backgroundColor: '#0f172a',
     borderRadius: 10,
     padding: 10,
   },
@@ -225,19 +235,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statLabel: {
-    color: '#64748b',
     fontSize: 11,
     fontWeight: '600',
   },
   statValue: {
-    color: '#f8fafc',
     fontSize: 15,
     fontWeight: '800',
     marginTop: 2,
   },
   addExerciseBtn: {
-    backgroundColor: '#1e293b',
-    borderColor: '#38bdf8',
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 14,
@@ -245,7 +251,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   addExerciseText: {
-    color: '#38bdf8',
     fontSize: 14,
     fontWeight: '800',
   },
@@ -256,26 +261,22 @@ const styles = StyleSheet.create({
   },
   finishBtn: {
     flex: 2,
-    backgroundColor: '#10b981',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
   finishText: {
-    color: '#ffffff',
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0.5,
   },
   discardBtn: {
     flex: 1,
-    backgroundColor: '#7f1d1d',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
   discardText: {
-    color: '#fca5a5',
     fontSize: 14,
     fontWeight: '800',
   },

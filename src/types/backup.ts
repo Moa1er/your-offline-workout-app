@@ -18,8 +18,10 @@ export interface ExportedTemplateExercise {
   exerciseId: string;
   order: number;
   targetSets: number;
-  repMin: number;
-  repMax: number;
+  targetReps?: number;
+  reps?: number;
+  repMin?: number;
+  repMax?: number;
   targetRir?: number | null;
   restBetweenSetsSeconds: number;
   restAfterExerciseSeconds: number;

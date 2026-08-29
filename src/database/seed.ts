@@ -252,19 +252,21 @@ export async function installExampleUpperBodyTemplate(db: SQLite.SQLiteDatabase)
 
   for (const te of templateExercises) {
     await db.runAsync(
-      `INSERT INTO workout_template_exercises (id, template_id, exercise_id, exercise_order, target_sets, rep_min, rep_max, target_rir, rest_between_sets_seconds, rest_after_exercise_seconds)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      `INSERT INTO workout_template_exercises (id, template_id, exercise_id, exercise_order, target_sets, target_reps, rep_min, rep_max, target_rir, rest_between_sets_seconds, rest_after_exercise_seconds, include_in_volume)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         te.id,
         templateId,
         te.exerciseId,
         te.order,
         te.targetSets,
+        te.repMax,
         te.repMin,
         te.repMax,
         te.targetRir,
         te.restBetweenSetsSeconds,
         te.restAfterExerciseSeconds,
+        1,
       ]
     );
   }

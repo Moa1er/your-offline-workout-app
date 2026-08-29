@@ -1,10 +1,11 @@
-// interactive svg progress chart for best weight, e1rm, and volume progression
+﻿// interactive svg progress chart for best weight, e1rm, and volume progression
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import Svg, { Path, Circle, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { ChartDataPoint } from '../../database/queries/statsQueries';
 import { formatWeight } from '../../utils/calculations';
+import { useAppTheme } from '../../context/ThemeContext';
 
 interface ProgressChartProps {
   data: ChartDataPoint[];
@@ -13,6 +14,7 @@ interface ProgressChartProps {
 }
 
 export const ProgressChart: React.FC<ProgressChartProps> = React.memo(({ data, unit, title }) => {
+  const { colors } = useAppTheme();
   const [selectedIndex, setSelectedIndex] = useState<number | null>(
     data.length > 0 ? data.length - 1 : null
   );
@@ -24,8 +26,8 @@ export const ProgressChart: React.FC<ProgressChartProps> = React.memo(({ data, u
 
   if (!data || data.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>No historical chart data points recorded yet.</Text>
+      <View style={[styles.emptyContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Text style={[styles.emptyText, { color: colors.textMuted }]}>No historical chart data points recorded yet.</Text>
       </View>
     );
   }
@@ -64,18 +66,18 @@ export const ProgressChart: React.FC<ProgressChartProps> = React.memo(({ data, u
   const selectedPoint = selectedIndex !== null ? points[selectedIndex] : points[points.length - 1];
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.chartTitle}>{title}</Text>
+    <View style={[styles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Text style={[styles.chartTitle, { color: colors.textMuted }]}>{title}</Text>
 
       {selectedPoint && (
-        <View style={styles.tooltipCard}>
-          <Text style={styles.tooltipDate}>{selectedPoint.dataPoint.date}</Text>
-          <Text style={styles.tooltipValue}>
+        <View style={[styles.tooltipCard, { backgroundColor: colors.cardAlt }]}>
+          <Text style={[styles.tooltipDate, { color: colors.textMuted }]}>{selectedPoint.dataPoint.date}</Text>
+          <Text style={[styles.tooltipValue, { color: colors.text }]}>
             {formatWeight(selectedPoint.dataPoint.value, unit)}
             {selectedPoint.dataPoint.reps ? ` × ${selectedPoint.dataPoint.reps} reps` : ''}
           </Text>
           {selectedPoint.dataPoint.e1rm && (
-            <Text style={styles.tooltipSub}>
+            <Text style={[styles.tooltipSub, { color: colors.secondary }]}>
               Est 1RM: {formatWeight(selectedPoint.dataPoint.e1rm, unit)}
             </Text>
           )}
@@ -85,8 +87,8 @@ export const ProgressChart: React.FC<ProgressChartProps> = React.memo(({ data, u
       <Svg width={width} height={height}>
         <Defs>
           <LinearGradient id="gradient" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor="#6366f1" stopOpacity="0.4" />
-            <Stop offset="100%" stopColor="#6366f1" stopOpacity="0.0" />
+            <Stop offset="0%" stopColor={colors.primary} stopOpacity="0.4" />
+            <Stop offset="100%" stopColor={colors.primary} stopOpacity="0.0" />
           </LinearGradient>
         </Defs>
 
@@ -96,7 +98,7 @@ export const ProgressChart: React.FC<ProgressChartProps> = React.memo(({ data, u
           y1={paddingVertical}
           x2={width - paddingHorizontal}
           y2={paddingVertical}
-          stroke="#334155"
+          stroke={colors.border}
           strokeDasharray="4 4"
         />
         <Line
@@ -104,12 +106,12 @@ export const ProgressChart: React.FC<ProgressChartProps> = React.memo(({ data, u
           y1={height - paddingVertical}
           x2={width - paddingHorizontal}
           y2={height - paddingVertical}
-          stroke="#334155"
+          stroke={colors.border}
           strokeDasharray="4 4"
         />
 
         {/* line path */}
-        <Path d={pathD} stroke="#6366f1" strokeWidth={3} fill="none" />
+        <Path d={pathD} stroke={colors.primary} strokeWidth={3} fill="none" />
 
         {/* interactive point dots */}
         {points.map((p, idx) => {
@@ -120,8 +122,8 @@ export const ProgressChart: React.FC<ProgressChartProps> = React.memo(({ data, u
               cx={p.x}
               cy={p.y}
               r={isSelected ? 6 : 4}
-              fill={isSelected ? '#38bdf8' : '#818cf8'}
-              stroke="#0f172a"
+              fill={isSelected ? colors.secondary : colors.primary}
+              stroke={colors.card}
               strokeWidth={2}
               onPress={() => setSelectedIndex(idx)}
             />
@@ -145,49 +147,44 @@ ProgressChart.displayName = 'ProgressChart';
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#1e293b',
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
+    borderWidth: 1,
   },
   chartTitle: {
-    color: '#94a3b8',
     fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
+    fontWeight: '800',
+    letterSpacing: 0.5,
     marginBottom: 8,
   },
   emptyContainer: {
-    backgroundColor: '#1e293b',
     borderRadius: 12,
     padding: 24,
     alignItems: 'center',
     marginBottom: 16,
+    borderWidth: 1,
   },
   emptyText: {
-    color: '#64748b',
     fontSize: 14,
   },
   tooltipCard: {
-    backgroundColor: '#0f172a',
     borderRadius: 8,
     padding: 10,
     marginBottom: 12,
     alignItems: 'flex-start',
   },
   tooltipDate: {
-    color: '#94a3b8',
     fontSize: 12,
   },
   tooltipValue: {
-    color: '#f8fafc',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   tooltipSub: {
-    color: '#38bdf8',
     fontSize: 13,
     marginTop: 2,
+    fontWeight: '700',
   },
   touchStrip: {
     flexDirection: 'row',

@@ -42,11 +42,13 @@ export async function getAllTemplates(db: SQLite.SQLiteDatabase): Promise<Workou
       exerciseName: e.exercise_name || 'Exercise',
       order: e.exercise_order,
       targetSets: e.target_sets,
-      repMin: e.rep_min,
-      repMax: e.rep_max,
+      targetReps: e.target_reps ?? e.rep_max ?? e.rep_min ?? 10,
+      repMin: e.rep_min ?? e.target_reps ?? 10,
+      repMax: e.rep_max ?? e.target_reps ?? 10,
       targetRir: e.target_rir,
-      restBetweenSetsSeconds: e.rest_between_sets_seconds,
-      restAfterExerciseSeconds: e.rest_after_exercise_seconds,
+      restBetweenSetsSeconds: e.rest_between_sets_seconds ?? 120,
+      restAfterExerciseSeconds: e.rest_after_exercise_seconds ?? 120,
+      includeInVolume: e.include_in_volume !== 0,
       notes: e.notes,
     })),
   }));
@@ -84,11 +86,13 @@ export async function getTemplateById(
       exerciseName: e.exercise_name,
       order: e.exercise_order,
       targetSets: e.target_sets,
-      repMin: e.rep_min,
-      repMax: e.rep_max,
+      targetReps: e.target_reps ?? e.rep_max ?? e.rep_min ?? 10,
+      repMin: e.rep_min ?? e.target_reps ?? 10,
+      repMax: e.rep_max ?? e.target_reps ?? 10,
       targetRir: e.target_rir,
-      restBetweenSetsSeconds: e.rest_between_sets_seconds,
-      restAfterExerciseSeconds: e.rest_after_exercise_seconds,
+      restBetweenSetsSeconds: e.rest_between_sets_seconds ?? 120,
+      restAfterExerciseSeconds: e.rest_after_exercise_seconds ?? 120,
+      includeInVolume: e.include_in_volume !== 0,
       notes: e.notes,
     })),
   };
@@ -114,27 +118,30 @@ export async function saveTemplate(
     } else {
       await db.runAsync(
         'INSERT INTO workout_templates (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?);',
-        [template.id, template.name, template.description || null, now, now]
+        [template.id, template.name, template.description || null, template.createdAt || now, now]
       );
     }
 
     // insert exercises
     for (let i = 0; i < template.exercises.length; i++) {
       const te = template.exercises[i];
+      const repsVal = te.targetReps ?? te.repMax ?? te.repMin ?? 10;
       await db.runAsync(
-        `INSERT INTO workout_template_exercises (id, template_id, exercise_id, exercise_order, target_sets, rep_min, rep_max, target_rir, rest_between_sets_seconds, rest_after_exercise_seconds, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        `INSERT INTO workout_template_exercises (id, template_id, exercise_id, exercise_order, target_sets, target_reps, rep_min, rep_max, target_rir, rest_between_sets_seconds, rest_after_exercise_seconds, include_in_volume, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
         [
           te.id || uuidv4(),
           template.id,
           te.exerciseId,
           i + 1,
           te.targetSets,
-          te.repMin,
-          te.repMax,
+          repsVal,
+          repsVal,
+          repsVal,
           te.targetRir ?? 2,
-          te.restBetweenSetsSeconds,
-          te.restAfterExerciseSeconds,
+          te.restBetweenSetsSeconds ?? 120,
+          te.restAfterExerciseSeconds ?? 120,
+          te.includeInVolume !== false ? 1 : 0,
           te.notes || null,
         ]
       );

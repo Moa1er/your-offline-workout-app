@@ -87,8 +87,10 @@ export async function createActiveWorkoutFromTemplate(
     primaryMuscle: MuscleGroup;
     order: number;
     targetSets: number;
+    targetReps?: number;
     repMin: number;
     repMax: number;
+    includeInVolume?: boolean;
     notes?: string | null;
   }[] = [];
 
@@ -109,8 +111,10 @@ export async function createActiveWorkoutFromTemplate(
           primaryMuscle: 'CHEST' as MuscleGroup, // will resolve below
           order: te.order,
           targetSets: te.targetSets,
-          repMin: te.repMin,
-          repMax: te.repMax,
+          targetReps: te.targetReps ?? te.repMax ?? te.repMin ?? 10,
+          repMin: te.repMin ?? te.targetReps ?? 10,
+          repMax: te.repMax ?? te.targetReps ?? 10,
+          includeInVolume: te.includeInVolume !== false,
           notes: te.notes,
         }));
       }
@@ -150,9 +154,9 @@ export async function createActiveWorkoutFromTemplate(
     const primaryMuscle = (exDetail?.primary_muscle as MuscleGroup) || 'CHEST';
 
     await db.runAsync(
-      `INSERT INTO workout_session_exercises (id, session_id, exercise_id, exercise_order, notes)
-       VALUES (?, ?, ?, ?, ?);`,
-      [seId, sessionId, ed.exerciseId, i + 1, ed.notes || null]
+      `INSERT INTO workout_session_exercises (id, session_id, exercise_id, exercise_order, include_in_volume, notes)
+       VALUES (?, ?, ?, ?, ?, ?);`,
+      [seId, sessionId, ed.exerciseId, i + 1, ed.includeInVolume !== false ? 1 : 0, ed.notes || null]
     );
 
     // fetch previous performance for pre-filling!
@@ -334,6 +338,7 @@ function buildSessionFromRows(
       notes: se.notes,
       restBetweenSetsSeconds: se.rest_between_sets_seconds ?? 120,
       restAfterExerciseSeconds: se.rest_after_exercise_seconds ?? 120,
+      includeInVolume: se.include_in_volume !== 0,
       sets,
       previousPerformance: [],
     };
@@ -530,6 +535,7 @@ export async function saveSessionExerciseUpdate(
     notes?: string | null;
     restBetweenSetsSeconds?: number;
     restAfterExerciseSeconds?: number;
+    includeInVolume?: boolean;
   }
 ): Promise<void> {
   const fields: string[] = [];
@@ -547,6 +553,10 @@ export async function saveSessionExerciseUpdate(
     fields.push('rest_after_exercise_seconds = ?');
     params.push(updates.restAfterExerciseSeconds);
   }
+  if (updates.includeInVolume !== undefined) {
+    fields.push('include_in_volume = ?');
+    params.push(updates.includeInVolume ? 1 : 0);
+  }
 
   if (fields.length === 0) return;
   params.push(sessionExerciseId);
@@ -555,6 +565,45 @@ export async function saveSessionExerciseUpdate(
     `UPDATE workout_session_exercises SET ${fields.join(', ')} WHERE id = ?;`,
     params
   );
+
+  // automatically propagate rest time and volume inclusion customizations back to template
+  try {
+    const seInfo = await db.getFirstAsync<{ session_id: string; exercise_id: string }>(
+      'SELECT session_id, exercise_id FROM workout_session_exercises WHERE id = ?;',
+      [sessionExerciseId]
+    );
+    if (seInfo) {
+      const sess = await db.getFirstAsync<{ template_id: string | null }>(
+        'SELECT template_id FROM workout_sessions WHERE id = ?;',
+        [seInfo.session_id]
+      );
+      if (sess?.template_id) {
+        const tmplFields: string[] = [];
+        const tmplParams: any[] = [];
+        if (updates.restBetweenSetsSeconds !== undefined) {
+          tmplFields.push('rest_between_sets_seconds = ?');
+          tmplParams.push(updates.restBetweenSetsSeconds);
+        }
+        if (updates.restAfterExerciseSeconds !== undefined) {
+          tmplFields.push('rest_after_exercise_seconds = ?');
+          tmplParams.push(updates.restAfterExerciseSeconds);
+        }
+        if (updates.includeInVolume !== undefined) {
+          tmplFields.push('include_in_volume = ?');
+          tmplParams.push(updates.includeInVolume ? 1 : 0);
+        }
+        if (tmplFields.length > 0) {
+          tmplParams.push(sess.template_id, seInfo.exercise_id);
+          await db.runAsync(
+            `UPDATE workout_template_exercises SET ${tmplFields.join(', ')} WHERE template_id = ? AND exercise_id = ?;`,
+            tmplParams
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error('error updating template exercise defaults:', err);
+  }
 }
 
 export async function deleteSession(

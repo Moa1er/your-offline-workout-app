@@ -77,12 +77,18 @@ export function validateWorkoutBackup(data: any): ImportValidationResult {
             `Workout template "${tmpl.name || tmpl.id || idx}" exercise at index ${j} is missing required string "exerciseId".`
           );
         }
-        for (const field of ['targetSets', 'repMin', 'repMax', 'restBetweenSetsSeconds', 'restAfterExerciseSeconds']) {
+        for (const field of ['targetSets', 'restBetweenSetsSeconds', 'restAfterExerciseSeconds']) {
           if (typeof te[field] !== 'number' || !Number.isFinite(te[field])) {
             errors.push(
               `Workout template "${tmpl.name || tmpl.id || idx}" exercise at index ${j} field "${field}" must be a finite number.`
             );
           }
+        }
+        const repsVal = te.targetReps ?? te.repMax ?? te.repMin ?? te.reps;
+        if (typeof repsVal !== 'number' || !Number.isFinite(repsVal)) {
+          errors.push(
+            `Workout template "${tmpl.name || tmpl.id || idx}" exercise at index ${j} must specify target reps as a number.`
+          );
         }
         if (
           te.targetRir !== undefined &&

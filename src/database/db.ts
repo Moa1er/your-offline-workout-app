@@ -19,7 +19,7 @@ export function getDatabase(): Promise<SQLite.SQLiteDatabase> {
       // execute ddl schemas
       await db.execAsync(CREATE_TABLES_SQL);
 
-      // run schema migrations for rest timer columns if needed
+      // run schema migrations for rest timer and volume columns if needed
       try {
         await db.execAsync('ALTER TABLE workout_session_exercises ADD COLUMN rest_between_sets_seconds INTEGER DEFAULT 120;');
       } catch {
@@ -27,6 +27,21 @@ export function getDatabase(): Promise<SQLite.SQLiteDatabase> {
       }
       try {
         await db.execAsync('ALTER TABLE workout_session_exercises ADD COLUMN rest_after_exercise_seconds INTEGER DEFAULT 120;');
+      } catch {
+        // column already exists
+      }
+      try {
+        await db.execAsync('ALTER TABLE workout_session_exercises ADD COLUMN include_in_volume INTEGER DEFAULT 1;');
+      } catch {
+        // column already exists
+      }
+      try {
+        await db.execAsync('ALTER TABLE workout_template_exercises ADD COLUMN target_reps INTEGER DEFAULT 10;');
+      } catch {
+        // column already exists
+      }
+      try {
+        await db.execAsync('ALTER TABLE workout_template_exercises ADD COLUMN include_in_volume INTEGER DEFAULT 1;');
       } catch {
         // column already exists
       }

@@ -1,25 +1,30 @@
-// non-intrusive pr toast notification banner
+﻿// non-intrusive pr toast notification banner
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useWorkout } from '../context/WorkoutContext';
+import { useAppTheme } from '../context/ThemeContext';
 
 export const PrToastBanner: React.FC = () => {
   const { prToasts, clearPrToast } = useWorkout();
+  const { colors } = useAppTheme();
 
   if (prToasts.length === 0) return null;
 
   return (
     <View style={styles.container}>
       {prToasts.map((toast) => (
-        <View key={toast.id} style={styles.toastCard}>
+        <View
+          key={toast.id}
+          style={[styles.toastCard, { backgroundColor: colors.card, borderColor: colors.secondary }]}
+        >
           <Text style={styles.trophy}>🏆</Text>
           <View style={styles.textContainer}>
-            <Text style={styles.prHeader}>NEW PR - {toast.exerciseName}</Text>
-            <Text style={styles.prDesc}>{toast.description}</Text>
+            <Text style={[styles.prHeader, { color: colors.secondary }]}>NEW PR - {toast.exerciseName}</Text>
+            <Text style={[styles.prDesc, { color: colors.text }]}>{toast.description}</Text>
           </View>
           <TouchableOpacity onPress={() => clearPrToast(toast.id)}>
-            <Text style={styles.closeBtn}>×</Text>
+            <Text style={[styles.closeBtn, { color: colors.textMuted }]}>×</Text>
           </TouchableOpacity>
         </View>
       ))}
@@ -37,9 +42,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   toastCard: {
-    backgroundColor: '#065f46',
-    borderColor: '#10b981',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderRadius: 12,
     padding: 12,
     flexDirection: 'row',
@@ -58,18 +61,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   prHeader: {
-    color: '#a7f3d0',
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
   prDesc: {
-    color: '#ffffff',
     fontSize: 14,
     fontWeight: '700',
   },
   closeBtn: {
-    color: '#a7f3d0',
     fontSize: 20,
     fontWeight: '700',
     paddingLeft: 8,

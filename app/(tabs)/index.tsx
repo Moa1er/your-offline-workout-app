@@ -1,6 +1,6 @@
 // workout home screen for fast template execution and session recovery
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useDatabase } from '../../src/context/DatabaseContext';
 import { useWorkout } from '../../src/context/WorkoutContext';
+import { useAppTheme } from '../../src/context/ThemeContext';
 import { WorkoutTemplate } from '../../src/types/workout';
 import { getAllTemplates } from '../../src/database/queries/templateQueries';
 import { getTemplateLastPerformedStats } from '../../src/database/queries/sessionQueries';
@@ -21,6 +22,7 @@ import { ActiveWorkoutCard } from '../../src/components/ActiveWorkoutCard';
 export default function WorkoutHomeScreen() {
   const { db, isReady } = useDatabase();
   const { activeSession, startWorkout } = useWorkout();
+  const { colors } = useAppTheme();
   const router = useRouter();
 
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
@@ -36,7 +38,6 @@ export default function WorkoutHomeScreen() {
   } | null> => {
     if (!db) return null;
     const tmpls = await getAllTemplates(db);
-    // calculate last performed stats for each template via fast single-query lookup
     const lastStats = await getTemplateLastPerformedStats(db);
     return { tmpls, lastStats };
   }, [db]);
@@ -50,25 +51,27 @@ export default function WorkoutHomeScreen() {
     setTemplateLastPerformed(lastStats);
   };
 
-  useEffect(() => {
-    if (!isReady || !db) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await loadHomeData();
-        if (!cancelled && data) {
-          applyHomeData(data.tmpls, data.lastStats);
+  useFocusEffect(
+    useCallback(() => {
+      if (!isReady || !db) return;
+      let cancelled = false;
+      (async () => {
+        try {
+          const data = await loadHomeData();
+          if (!cancelled && data) {
+            applyHomeData(data.tmpls, data.lastStats);
+          }
+        } catch (err) {
+          console.error('error loading templates:', err);
+        } finally {
+          if (!cancelled) setLoading(false);
         }
-      } catch (err) {
-        console.error('error loading templates:', err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isReady, db, activeSession, loadHomeData]);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [isReady, db, loadHomeData])
+  );
 
   const handleInstallExample = async () => {
     if (!db) return;
@@ -97,30 +100,33 @@ export default function WorkoutHomeScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#6366f1" />
+      <View style={[styles.centerContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.content}>
       {/* active workout recovery card */}
       <ActiveWorkoutCard />
 
       {/* first launch example workout installation prompt */}
       {showSeedPrompt && (
-        <View style={styles.seedCard}>
-          <Text style={styles.seedTitle}>Welcome to Workout Tracker</Text>
-          <Text style={styles.seedSub}>
+        <View style={[styles.seedCard, { backgroundColor: colors.card, borderColor: colors.primary }]}>
+          <Text style={[styles.seedTitle, { color: colors.text }]}>Welcome to Workout Tracker</Text>
+          <Text style={[styles.seedSub, { color: colors.textMuted }]}>
             Would you like to install the default &quot;Full Upper Body&quot; resistance training routine?
           </Text>
           <View style={styles.seedButtonRow}>
-            <TouchableOpacity style={styles.seedYesBtn} onPress={handleInstallExample}>
-              <Text style={styles.seedYesText}>YES, INSTALL</Text>
+            <TouchableOpacity
+              style={[styles.seedYesBtn, { backgroundColor: colors.primary }]}
+              onPress={handleInstallExample}
+            >
+              <Text style={[styles.seedYesText, { color: colors.primaryText }]}>YES, INSTALL</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.seedNoBtn} onPress={() => setShowSeedPrompt(false)}>
-              <Text style={styles.seedNoText}>NO</Text>
+              <Text style={[styles.seedNoText, { color: colors.textMuted }]}>NO</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -128,9 +134,9 @@ export default function WorkoutHomeScreen() {
 
       {/* header title */}
       <View style={styles.header}>
-        <Text style={styles.sectionHeader}>WORKOUT ROUTINES</Text>
+        <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>WORKOUT ROUTINES</Text>
         <TouchableOpacity onPress={handleStartCustom}>
-          <Text style={styles.customBtnText}>+ Quick Start</Text>
+          <Text style={[styles.customBtnText, { color: colors.primary }]}>+ Quick Start</Text>
         </TouchableOpacity>
       </View>
 
@@ -138,48 +144,52 @@ export default function WorkoutHomeScreen() {
       {templates.map((template) => {
         const lastStat = templateLastPerformed[template.id];
         return (
-          <View key={template.id} style={styles.templateCard}>
+          <View key={template.id} style={[styles.templateCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.templateHeader}>
-              <Text style={styles.templateName}>{template.name}</Text>
-              <Text style={styles.exerciseCount}>{template.exercises.length} exercises</Text>
+              <Text style={[styles.templateName, { color: colors.text }]}>{template.name}</Text>
+              <Text style={[styles.exerciseCount, { color: colors.secondary }]}>
+                {template.exercises.length} exercises
+              </Text>
             </View>
 
-            {template.description && (
-              <Text style={styles.templateDesc}>{template.description}</Text>
-            )}
+            {template.description ? (
+              <Text style={[styles.templateDesc, { color: colors.textMuted }]}>{template.description}</Text>
+            ) : null}
 
             {lastStat && (
-              <View style={styles.lastPerfRow}>
+              <View style={[styles.lastPerfRow, { backgroundColor: colors.cardAlt }]}>
                 <View style={styles.statBox}>
-                  <Text style={styles.statLabel}>Last performed</Text>
-                  <Text style={styles.statValue}>{lastStat.date}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textMuted }]}>Last performed</Text>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{lastStat.date}</Text>
                 </View>
                 <View style={styles.statBox}>
-                  <Text style={styles.statLabel}>Last duration</Text>
-                  <Text style={styles.statValue}>{lastStat.duration}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textMuted }]}>Last duration</Text>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{lastStat.duration}</Text>
                 </View>
               </View>
             )}
 
             <TouchableOpacity
-              style={styles.startButton}
+              style={[styles.startButton, { backgroundColor: colors.primary }]}
               onPress={() => handleStartTemplate(template.id)}
             >
-              <Text style={styles.startText}>START WORKOUT</Text>
+              <Text style={[styles.startText, { color: colors.primaryText }]}>START WORKOUT</Text>
             </TouchableOpacity>
           </View>
         );
       })}
 
       {templates.length === 0 && !showSeedPrompt && (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>NO WORKOUTS YET</Text>
-          <Text style={styles.emptySub}>Create your first workout template to get started.</Text>
+        <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>NO WORKOUTS YET</Text>
+          <Text style={[styles.emptySub, { color: colors.textMuted }]}>
+            Create your first workout template to get started.
+          </Text>
           <TouchableOpacity
-            style={styles.createBtn}
+            style={[styles.createBtn, { backgroundColor: colors.primary }]}
             onPress={() => router.push('/template-editor')}
           >
-            <Text style={styles.createBtnText}>CREATE WORKOUT</Text>
+            <Text style={[styles.createBtnText, { color: colors.primaryText }]}>CREATE WORKOUT</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -190,7 +200,6 @@ export default function WorkoutHomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
   },
   content: {
     padding: 16,
@@ -200,7 +209,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0f172a',
   },
   header: {
     flexDirection: 'row',
@@ -210,23 +218,19 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   sectionHeader: {
-    color: '#64748b',
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
   customBtnText: {
-    color: '#38bdf8',
     fontSize: 13,
     fontWeight: '700',
   },
   templateCard: {
-    backgroundColor: '#1e293b',
     borderRadius: 14,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   templateHeader: {
     flexDirection: 'row',
@@ -235,23 +239,19 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   templateName: {
-    color: '#f8fafc',
     fontSize: 18,
     fontWeight: '800',
   },
   exerciseCount: {
-    color: '#38bdf8',
     fontSize: 12,
     fontWeight: '700',
   },
   templateDesc: {
-    color: '#94a3b8',
     fontSize: 13,
     marginBottom: 12,
   },
   lastPerfRow: {
     flexDirection: 'row',
-    backgroundColor: '#0f172a',
     borderRadius: 10,
     padding: 10,
     marginBottom: 14,
@@ -260,43 +260,35 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statLabel: {
-    color: '#64748b',
     fontSize: 11,
     fontWeight: '600',
   },
   statValue: {
-    color: '#f8fafc',
     fontSize: 14,
     fontWeight: '700',
     marginTop: 2,
   },
   startButton: {
-    backgroundColor: '#6366f1',
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
   },
   startText: {
-    color: '#ffffff',
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
   seedCard: {
-    backgroundColor: '#1e1b4b',
-    borderColor: '#6366f1',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderRadius: 14,
     padding: 16,
     marginBottom: 20,
   },
   seedTitle: {
-    color: '#ffffff',
     fontSize: 18,
     fontWeight: '800',
   },
   seedSub: {
-    color: '#cbd5e1',
     fontSize: 13,
     marginTop: 4,
     marginBottom: 14,
@@ -307,13 +299,11 @@ const styles = StyleSheet.create({
   },
   seedYesBtn: {
     flex: 1,
-    backgroundColor: '#6366f1',
     paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
   },
   seedYesText: {
-    color: '#ffffff',
     fontWeight: '800',
     fontSize: 13,
   },
@@ -324,38 +314,60 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   seedNoText: {
-    color: '#94a3b8',
     fontWeight: '700',
     fontSize: 13,
   },
   emptyCard: {
-    backgroundColor: '#1e293b',
     borderRadius: 14,
     padding: 24,
     alignItems: 'center',
     marginTop: 20,
+    borderWidth: 1,
   },
   emptyTitle: {
-    color: '#f8fafc',
     fontSize: 16,
     fontWeight: '800',
   },
   emptySub: {
-    color: '#94a3b8',
     fontSize: 13,
     textAlign: 'center',
     marginTop: 4,
     marginBottom: 16,
   },
   createBtn: {
-    backgroundColor: '#6366f1',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 8,
   },
   createBtnText: {
-    color: '#ffffff',
     fontWeight: '800',
     fontSize: 13,
+  },
+  brandHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+    gap: 12,
+  },
+  brandLogo: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+  },
+  brandTextContainer: {
+    flex: 1,
+  },
+  brandTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  brandSubtitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 1,
   },
 });

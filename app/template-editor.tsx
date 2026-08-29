@@ -1,4 +1,4 @@
-// create and edit workout template screen
+// create and edit workout template screen with single target reps, rest controls, and science guide
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -14,14 +14,19 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useDatabase } from '../src/context/DatabaseContext';
+import { useAppTheme } from '../src/context/ThemeContext';
 import { WorkoutTemplate, TemplateExercise, Exercise } from '../src/types/workout';
 import { getTemplateById, saveTemplate } from '../src/database/queries/templateQueries';
 import { getAllExercises } from '../src/database/queries/exerciseQueries';
-import { v4 as uuidv4 } from 'uuid';
+import { ScienceGuidelinesModal } from '../src/components/ScienceGuidelinesModal';
+import { useAppAlert } from '../src/context/AlertContext';
+import { generateId as uuidv4 } from '../src/utils/uuid';
 
 export default function TemplateEditorScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { db, isReady } = useDatabase();
+  const { colors } = useAppTheme();
+  const { showAlert } = useAppAlert();
   const router = useRouter();
 
   const [name, setName] = useState('');
@@ -32,6 +37,7 @@ export default function TemplateEditorScreen() {
   const [pickerLoading, setPickerLoading] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
   const [pickerExercises, setPickerExercises] = useState<Exercise[]>([]);
+  const [scienceModalVisible, setScienceModalVisible] = useState(false);
 
   useEffect(() => {
     if (!db || !isReady) return;
@@ -42,7 +48,14 @@ export default function TemplateEditorScreen() {
         if (!cancelled && t) {
           setName(t.name);
           setDescription(t.description || '');
-          setExercises(t.exercises);
+          setExercises(
+            t.exercises.map((e) => ({
+              ...e,
+              targetReps: e.targetReps ?? e.repMax ?? e.repMin ?? 10,
+              restBetweenSetsSeconds: e.restBetweenSetsSeconds ?? 120,
+              restAfterExerciseSeconds: e.restAfterExerciseSeconds ?? 120,
+            }))
+          );
         }
       }
       if (!cancelled) setLoading(false);
@@ -54,11 +67,19 @@ export default function TemplateEditorScreen() {
 
   const handleSave = async () => {
     if (!name.trim()) {
-      Alert.alert('Validation Error', 'Please enter a template name.');
+      showAlert({
+        title: 'Validation Error',
+        message: 'Please enter a routine name for this template.',
+        icon: '⚠️',
+      });
       return;
     }
     if (exercises.length === 0) {
-      Alert.alert('Validation Error', 'Please add at least one exercise to the template.');
+      showAlert({
+        title: 'Validation Error',
+        message: 'Please add at least one exercise to the template before saving.',
+        icon: '⚠️',
+      });
       return;
     }
     if (!db) return;
@@ -68,7 +89,17 @@ export default function TemplateEditorScreen() {
       id: templateId,
       name: name.trim(),
       description: description.trim() || null,
-      exercises,
+      exercises: exercises.map((e, idx) => ({
+        ...e,
+        order: idx + 1,
+        targetSets: e.targetSets || 3,
+        targetReps: e.targetReps || 10,
+        repMin: e.targetReps || 10,
+        repMax: e.targetReps || 10,
+        restBetweenSetsSeconds: e.restBetweenSetsSeconds !== undefined ? e.restBetweenSetsSeconds : 120,
+        restAfterExerciseSeconds: e.restAfterExerciseSeconds !== undefined ? e.restAfterExerciseSeconds : 120,
+        includeInVolume: e.includeInVolume !== false,
+      })),
     };
 
     await saveTemplate(db, tmpl);
@@ -109,15 +140,37 @@ export default function TemplateEditorScreen() {
       exerciseName: ex.name,
       order: exercises.length + 1,
       targetSets: 3,
-      repMin: 6,
+      targetReps: 10,
+      repMin: 10,
       repMax: 10,
       targetRir: 2,
       restBetweenSetsSeconds: 120,
       restAfterExerciseSeconds: 120,
+      includeInVolume: true,
     };
     setExercises([...exercises, newTe]);
     setPickerOpen(false);
     setPickerSearch('');
+  };
+
+  const updateExerciseField = (
+    idx: number,
+    field: keyof TemplateExercise,
+    value: any
+  ) => {
+    const updated = [...exercises];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setExercises(updated);
+  };
+
+  const adjustRestTime = (
+    idx: number,
+    field: 'restBetweenSetsSeconds' | 'restAfterExerciseSeconds',
+    delta: number
+  ) => {
+    const current = exercises[idx][field] ?? 120;
+    const next = Math.max(0, current + delta);
+    updateExerciseField(idx, field, next);
   };
 
   const filteredPickerExercises = pickerExercises.filter((ex) =>
@@ -126,131 +179,218 @@ export default function TemplateEditorScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#6366f1" />
+      <View style={[styles.centerContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.sectionHeader}>TEMPLATE DETAILS</Text>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.content}>
+      {/* prominent science guide banner */}
+      <TouchableOpacity
+        style={[styles.guideBanner, { backgroundColor: colors.card, borderColor: colors.secondary }]}
+        onPress={() => setScienceModalVisible(true)}
+        activeOpacity={0.8}
+      >
+        <View style={styles.guideIconCircle}>
+          <Text style={styles.guideEmoji}>💡</Text>
+        </View>
+        <View style={styles.guideBannerTextContainer}>
+          <Text style={[styles.guideBannerTitle, { color: colors.secondary }]}>
+            WORKOUT DESIGN & SCIENCE GUIDE
+          </Text>
+          <Text style={[styles.guideBannerSub, { color: colors.textMuted }]}>
+            Optimal sets (10-20/wk), reps (6-20 @ 1-3 RIR), and rest (2-3+ min compound)
+          </Text>
+        </View>
+        <Text style={[styles.guideArrow, { color: colors.secondary }]}>→</Text>
+      </TouchableOpacity>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>Routine Name</Text>
+      <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>TEMPLATE DETAILS</Text>
+
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Text style={[styles.label, { color: colors.textMuted }]}>Routine Name</Text>
         <TextInput
-          style={styles.textInput}
+          style={[styles.textInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
           value={name}
           onChangeText={setName}
           placeholder="e.g. Full Upper Body"
-          placeholderTextColor="#64748b"
+          placeholderTextColor={colors.textSubtle}
         />
 
-        <Text style={styles.label}>Description (Optional)</Text>
+        <Text style={[styles.label, { color: colors.textMuted }]}>Description (Optional)</Text>
         <TextInput
-          style={styles.textInput}
+          style={[styles.textInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
           value={description}
           onChangeText={setDescription}
           placeholder="e.g. Focus on chest and lats"
-          placeholderTextColor="#64748b"
+          placeholderTextColor={colors.textSubtle}
         />
       </View>
 
       <View style={styles.exHeaderRow}>
-        <Text style={styles.sectionHeader}>EXERCISES ({exercises.length})</Text>
-        <TouchableOpacity style={styles.addExBtn} onPress={openExercisePicker}>
-          <Text style={styles.addExText}>+ ADD EXERCISE</Text>
+        <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>EXERCISES ({exercises.length})</Text>
+        <TouchableOpacity
+          style={[styles.addExBtn, { backgroundColor: colors.cardAlt, borderColor: colors.border, borderWidth: 1 }]}
+          onPress={openExercisePicker}
+        >
+          <Text style={[styles.addExText, { color: colors.primary }]}>+ ADD EXERCISE</Text>
         </TouchableOpacity>
       </View>
 
-      {exercises.map((te, idx) => (
-        <View key={te.id || idx} style={styles.exCard}>
-          <View style={styles.exCardHeader}>
-            <Text style={styles.exOrderText}>{idx + 1}.</Text>
-            <Text style={styles.exTitle}>{te.exerciseName || 'Exercise'}</Text>
-            <View style={styles.reorderBtns}>
-              {idx > 0 && (
-                <TouchableOpacity onPress={() => moveExercise(idx, idx - 1)}>
-                  <Text style={styles.arrowBtn}>▲</Text>
-                </TouchableOpacity>
-              )}
-              {idx < exercises.length - 1 && (
-                <TouchableOpacity onPress={() => moveExercise(idx, idx + 1)}>
-                  <Text style={styles.arrowBtn}>▼</Text>
-                </TouchableOpacity>
-              )}
+      {exercises.map((te, idx) => {
+        const setRest = te.restBetweenSetsSeconds !== undefined ? te.restBetweenSetsSeconds : 120;
+        const exRest = te.restAfterExerciseSeconds !== undefined ? te.restAfterExerciseSeconds : 120;
+
+        return (
+          <View key={te.id || idx} style={[styles.exCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.exCardHeader}>
+              <Text style={[styles.exOrderText, { color: colors.primary }]}>{idx + 1}.</Text>
+              <Text style={[styles.exTitle, { color: colors.text }]}>{te.exerciseName || 'Exercise'}</Text>
+              <View style={styles.reorderBtns}>
+                {idx > 0 && (
+                  <TouchableOpacity onPress={() => moveExercise(idx, idx - 1)}>
+                    <Text style={[styles.arrowBtn, { color: colors.textMuted }]}>▲</Text>
+                  </TouchableOpacity>
+                )}
+                {idx < exercises.length - 1 && (
+                  <TouchableOpacity onPress={() => moveExercise(idx, idx + 1)}>
+                    <Text style={[styles.arrowBtn, { color: colors.textMuted }]}>▼</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <TouchableOpacity onPress={() => removeExercise(idx)}>
+                <Text style={[styles.deleteExText, { color: colors.danger }]}>×</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={() => removeExercise(idx)}>
-              <Text style={styles.deleteExText}>×</Text>
-            </TouchableOpacity>
+
+            {/* sets and reps controls */}
+            <View style={styles.targetGrid}>
+              <View style={[styles.targetBox, { backgroundColor: colors.cardAlt }]}>
+                <Text style={[styles.targetLabel, { color: colors.textMuted }]}>Target Sets</Text>
+                <View style={styles.stepperInputRow}>
+                  <TouchableOpacity
+                    style={[styles.stepperBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => updateExerciseField(idx, 'targetSets', Math.max(1, (te.targetSets || 3) - 1))}
+                  >
+                    <Text style={[styles.stepperBtnText, { color: colors.text }]}>-</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.smallInput, { color: colors.text }]}
+                    keyboardType="numeric"
+                    value={String(te.targetSets || 3)}
+                    onChangeText={(t) => {
+                      const num = parseInt(t.replace(/[^0-9]/g, ''), 10);
+                      updateExerciseField(idx, 'targetSets', isNaN(num) ? 0 : num);
+                    }}
+                  />
+                  <TouchableOpacity
+                    style={[styles.stepperBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => updateExerciseField(idx, 'targetSets', (te.targetSets || 3) + 1)}
+                  >
+                    <Text style={[styles.stepperBtnText, { color: colors.text }]}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={[styles.targetBox, { backgroundColor: colors.cardAlt }]}>
+                <Text style={[styles.targetLabel, { color: colors.textMuted }]}>Target Reps</Text>
+                <View style={styles.stepperInputRow}>
+                  <TouchableOpacity
+                    style={[styles.stepperBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => updateExerciseField(idx, 'targetReps', Math.max(1, (te.targetReps || 10) - 1))}
+                  >
+                    <Text style={[styles.stepperBtnText, { color: colors.text }]}>-</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.smallInput, { color: colors.text }]}
+                    keyboardType="numeric"
+                    value={String(te.targetReps ?? 10)}
+                    onChangeText={(t) => {
+                      const num = parseInt(t.replace(/[^0-9]/g, ''), 10);
+                      updateExerciseField(idx, 'targetReps', isNaN(num) ? 0 : num);
+                    }}
+                  />
+                  <TouchableOpacity
+                    style={[styles.stepperBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => updateExerciseField(idx, 'targetReps', (te.targetReps || 10) + 1)}
+                  >
+                    <Text style={[styles.stepperBtnText, { color: colors.text }]}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {/* dedicated set rest and exercise rest controls with steppers */}
+            <View style={styles.restSectionRow}>
+              {/* set rest control */}
+              <View style={[styles.restControlCard, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}>
+                <Text style={[styles.restControlLabel, { color: colors.textMuted }]}>Set Rest</Text>
+                <View style={styles.restStepperRow}>
+                  <TouchableOpacity
+                    style={[styles.restStepBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => adjustRestTime(idx, 'restBetweenSetsSeconds', -15)}
+                  >
+                    <Text style={[styles.restStepText, { color: colors.text }]}>-15</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.restNumberInput, { color: colors.secondary, backgroundColor: colors.card }]}
+                    keyboardType="numeric"
+                    value={String(setRest)}
+                    onChangeText={(t) => {
+                      const num = parseInt(t.replace(/[^0-9]/g, ''), 10);
+                      updateExerciseField(idx, 'restBetweenSetsSeconds', isNaN(num) ? 0 : num);
+                    }}
+                  />
+                  <Text style={[styles.unitSec, { color: colors.textMuted }]}>s</Text>
+                  <TouchableOpacity
+                    style={[styles.restStepBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => adjustRestTime(idx, 'restBetweenSetsSeconds', 15)}
+                  >
+                    <Text style={[styles.restStepText, { color: colors.text }]}>+15</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* exercise rest control */}
+              <View style={[styles.restControlCard, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}>
+                <Text style={[styles.restControlLabel, { color: colors.textMuted }]}>Exercise Rest</Text>
+                <View style={styles.restStepperRow}>
+                  <TouchableOpacity
+                    style={[styles.restStepBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => adjustRestTime(idx, 'restAfterExerciseSeconds', -15)}
+                  >
+                    <Text style={[styles.restStepText, { color: colors.text }]}>-15</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.restNumberInput, { color: colors.secondary, backgroundColor: colors.card }]}
+                    keyboardType="numeric"
+                    value={String(exRest)}
+                    onChangeText={(t) => {
+                      const num = parseInt(t.replace(/[^0-9]/g, ''), 10);
+                      updateExerciseField(idx, 'restAfterExerciseSeconds', isNaN(num) ? 0 : num);
+                    }}
+                  />
+                  <Text style={[styles.unitSec, { color: colors.textMuted }]}>s</Text>
+                  <TouchableOpacity
+                    style={[styles.restStepBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => adjustRestTime(idx, 'restAfterExerciseSeconds', 15)}
+                  >
+                    <Text style={[styles.restStepText, { color: colors.text }]}>+15</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
           </View>
+        );
+      })}
 
-          <View style={styles.targetGrid}>
-            <View style={styles.targetBox}>
-              <Text style={styles.targetLabel}>Sets</Text>
-              <TextInput
-                style={styles.smallInput}
-                keyboardType="numeric"
-                value={String(te.targetSets)}
-                onChangeText={(t) => {
-                  const val = parseInt(t, 10) || 1;
-                  const updated = [...exercises];
-                  updated[idx].targetSets = val;
-                  setExercises(updated);
-                }}
-              />
-            </View>
-
-            <View style={styles.targetBox}>
-              <Text style={styles.targetLabel}>Min Reps</Text>
-              <TextInput
-                style={styles.smallInput}
-                keyboardType="numeric"
-                value={String(te.repMin)}
-                onChangeText={(t) => {
-                  const val = parseInt(t, 10) || 1;
-                  const updated = [...exercises];
-                  updated[idx].repMin = val;
-                  setExercises(updated);
-                }}
-              />
-            </View>
-
-            <View style={styles.targetBox}>
-              <Text style={styles.targetLabel}>Max Reps</Text>
-              <TextInput
-                style={styles.smallInput}
-                keyboardType="numeric"
-                value={String(te.repMax)}
-                onChangeText={(t) => {
-                  const val = parseInt(t, 10) || 1;
-                  const updated = [...exercises];
-                  updated[idx].repMax = val;
-                  setExercises(updated);
-                }}
-              />
-            </View>
-
-            <View style={styles.targetBox}>
-              <Text style={styles.targetLabel}>Rest (s)</Text>
-              <TextInput
-                style={styles.smallInput}
-                keyboardType="numeric"
-                value={String(te.restBetweenSetsSeconds)}
-                onChangeText={(t) => {
-                  const val = parseInt(t, 10) || 60;
-                  const updated = [...exercises];
-                  updated[idx].restBetweenSetsSeconds = val;
-                  setExercises(updated);
-                }}
-              />
-            </View>
-          </View>
-        </View>
-      ))}
-
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>SAVE TEMPLATE</Text>
+      <TouchableOpacity
+        style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+        onPress={handleSave}
+      >
+        <Text style={[styles.saveBtnText, { color: colors.primaryText }]}>SAVE TEMPLATE</Text>
       </TouchableOpacity>
 
       {/* exercise picker modal */}
@@ -260,46 +400,57 @@ export default function TemplateEditorScreen() {
         animationType="fade"
         onRequestClose={() => setPickerOpen(false)}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>SELECT EXERCISE</Text>
+        <View style={[styles.modalBackdrop, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>SELECT EXERCISE</Text>
               <TouchableOpacity onPress={() => setPickerOpen(false)}>
-                <Text style={styles.modalCloseText}>×</Text>
+                <Text style={[styles.modalCloseText, { color: colors.textMuted }]}>✕</Text>
               </TouchableOpacity>
             </View>
 
             <TextInput
-              style={styles.modalSearch}
+              style={[
+                styles.modalSearch,
+                { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text },
+              ]}
               placeholder="Search exercises..."
-              placeholderTextColor="#64748b"
+              placeholderTextColor={colors.textSubtle}
               value={pickerSearch}
               onChangeText={setPickerSearch}
               autoFocus
             />
 
             {pickerLoading ? (
-              <ActivityIndicator size="large" color="#6366f1" style={styles.modalLoading} />
+              <ActivityIndicator size="large" color={colors.primary} style={styles.modalLoading} />
             ) : (
               <ScrollView style={styles.modalList} keyboardShouldPersistTaps="handled">
                 {filteredPickerExercises.map((ex) => (
                   <TouchableOpacity
                     key={ex.id}
-                    style={styles.modalItem}
+                    style={[styles.modalItem, { backgroundColor: colors.cardAlt }]}
                     onPress={() => addExercise(ex)}
                   >
-                    <Text style={styles.modalItemName}>{ex.name}</Text>
-                    <Text style={styles.modalItemMuscle}>{ex.primaryMuscle}</Text>
+                    <Text style={[styles.modalItemName, { color: colors.text }]}>{ex.name}</Text>
+                    <Text style={[styles.modalItemMuscle, { color: colors.secondary }]}>
+                      {ex.primaryMuscle}
+                    </Text>
                   </TouchableOpacity>
                 ))}
                 {filteredPickerExercises.length === 0 && (
-                  <Text style={styles.modalEmpty}>No exercises found.</Text>
+                  <Text style={[styles.modalEmpty, { color: colors.textMuted }]}>No exercises found.</Text>
                 )}
               </ScrollView>
             )}
           </View>
         </View>
       </Modal>
+
+      {/* science guidelines modal */}
+      <ScienceGuidelinesModal
+        visible={scienceModalVisible}
+        onClose={() => setScienceModalVisible(false)}
+      />
     </ScrollView>
   );
 }
@@ -307,7 +458,6 @@ export default function TemplateEditorScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
   },
   content: {
     padding: 16,
@@ -317,38 +467,67 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0f172a',
+  },
+  guideBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    marginBottom: 16,
+    gap: 12,
+  },
+  guideIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guideEmoji: {
+    fontSize: 20,
+  },
+  guideBannerTextContainer: {
+    flex: 1,
+  },
+  guideBannerTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  guideBannerSub: {
+    fontSize: 11,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  guideArrow: {
+    fontSize: 18,
+    fontWeight: '800',
+    paddingRight: 4,
   },
   sectionHeader: {
-    color: '#64748b',
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.5,
     marginBottom: 8,
   },
   card: {
-    backgroundColor: '#1e293b',
     borderRadius: 14,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   label: {
-    color: '#94a3b8',
     fontSize: 12,
     fontWeight: '700',
     marginBottom: 4,
     marginTop: 6,
   },
   textInput: {
-    backgroundColor: '#0f172a',
-    color: '#f8fafc',
     borderRadius: 8,
     padding: 10,
     fontSize: 15,
     borderWidth: 1,
-    borderColor: '#334155',
     marginBottom: 8,
   },
   exHeaderRow: {
@@ -358,23 +537,19 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   addExBtn: {
-    backgroundColor: '#312e81',
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 8,
   },
   addExText: {
-    color: '#a5b4fc',
     fontSize: 12,
     fontWeight: '800',
   },
   exCard: {
-    backgroundColor: '#1e293b',
     borderRadius: 12,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   exCardHeader: {
     flexDirection: 'row',
@@ -383,12 +558,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   exOrderText: {
-    color: '#6366f1',
     fontWeight: '800',
     fontSize: 14,
   },
   exTitle: {
-    color: '#f8fafc',
     fontSize: 16,
     fontWeight: '700',
     flex: 1,
@@ -398,12 +571,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   arrowBtn: {
-    color: '#94a3b8',
     fontSize: 14,
     paddingHorizontal: 4,
   },
   deleteExText: {
-    color: '#ef4444',
     fontSize: 22,
     fontWeight: '700',
     paddingLeft: 8,
@@ -411,41 +582,103 @@ const styles = StyleSheet.create({
   targetGrid: {
     flexDirection: 'row',
     gap: 8,
+    marginBottom: 10,
   },
   targetBox: {
     flex: 1,
-    backgroundColor: '#0f172a',
     borderRadius: 8,
     padding: 8,
     alignItems: 'center',
   },
   targetLabel: {
-    color: '#64748b',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     marginBottom: 4,
   },
+  stepperInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  stepperBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
   smallInput: {
-    color: '#f8fafc',
     fontSize: 15,
     fontWeight: '800',
     textAlign: 'center',
+    textAlignVertical: 'center',
+    paddingVertical: 0,
+    includeFontPadding: false,
+    minWidth: 32,
+  },
+  restSectionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  restControlCard: {
+    flex: 1,
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  restControlLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  restStepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  restStepBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  restStepText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  restNumberInput: {
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    paddingVertical: 0,
+    paddingHorizontal: 4,
+    includeFontPadding: false,
+    borderRadius: 4,
+    minWidth: 36,
+  },
+  unitSec: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   saveBtn: {
-    backgroundColor: '#6366f1',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 10,
   },
   saveBtnText: {
-    color: '#ffffff',
     fontSize: 15,
     fontWeight: '800',
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -453,10 +686,8 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '100%',
     maxHeight: '75%',
-    backgroundColor: '#1e293b',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#334155',
     overflow: 'hidden',
   },
   modalHeader: {
@@ -465,27 +696,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#334155',
   },
   modalTitle: {
-    color: '#f8fafc',
     fontSize: 16,
     fontWeight: '800',
   },
   modalCloseText: {
-    color: '#94a3b8',
     fontSize: 20,
     fontWeight: '700',
     paddingLeft: 12,
   },
   modalSearch: {
-    backgroundColor: '#0f172a',
-    color: '#f8fafc',
     borderRadius: 8,
     padding: 10,
     fontSize: 14,
     borderWidth: 1,
-    borderColor: '#334155',
     margin: 12,
   },
   modalLoading: {
@@ -503,22 +728,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 8,
     marginBottom: 4,
-    backgroundColor: '#0f172a',
   },
   modalItemName: {
-    color: '#f8fafc',
     fontSize: 14,
     fontWeight: '600',
     flex: 1,
   },
   modalItemMuscle: {
-    color: '#38bdf8',
     fontSize: 11,
     fontWeight: '700',
     marginLeft: 8,
   },
   modalEmpty: {
-    color: '#64748b',
     fontSize: 13,
     textAlign: 'center',
     padding: 20,
