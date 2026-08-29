@@ -26,21 +26,21 @@ No accounts, no cloud sync, no subscriptions, and zero ads. Everything stays sec
 
 ## 📱 Screenshots
 
-| Home & Routines | Active Workout Logging | Live Rest Timer |
+| Home & Routines | Active Workout Logging | Workout Complete |
 |---|---|---|
-| ![Home](docs/screenshots/home.png) | ![Active workout](docs/screenshots/active-workout.png) | ![Rest timer](docs/screenshots/rest-timer.png) |
+| ![Home](docs/screenshots/home.png) | ![Active Workout](docs/screenshots/active-workout.png) | ![Workout Complete](docs/screenshots/summary.png) |
 
 | Templates & Comparison | Template Editor | Exercise Picker |
 |---|---|---|
 | ![Templates](docs/screenshots/templates.png) | ![Template Editor](docs/screenshots/template-editor.png) | ![Exercise Picker](docs/screenshots/exercise-picker.png) |
 
-| Session Detail | History & Duration Editing | Workout Summary |
+| Workout History | Session Detail & Editing | Settings & Data Tools |
 |---|---|---|
-| ![Session Detail](docs/screenshots/session-detail.png) | ![History](docs/screenshots/history.png) | ![Summary](docs/screenshots/summary.png) |
+| ![Workout History](docs/screenshots/history.png) | ![Session Detail](docs/screenshots/session-detail.png) | ![Settings](docs/screenshots/settings.png) |
 
-| Progress Dashboard | Volume & Split Charts | Settings & Backup Tools |
-|---|---|---|
-| ![Progress](docs/screenshots/progress.png) | ![Progress Charts](docs/screenshots/progress-charts.png) | ![Settings](docs/screenshots/settings.png) |
+| Training Overview & Split | Exercise Progression & PRs |
+|---|---|
+| ![Progress Overview](docs/screenshots/progress.png) | ![Exercise Progression](docs/screenshots/progress-charts.png) |
 
 ---
 
