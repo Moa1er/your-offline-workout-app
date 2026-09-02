@@ -148,8 +148,8 @@ export function evaluateTemplate(
         type: 'VOLUME',
         severity: 'WARNING',
         title: `High Session Volume on ${muscle} (${sets} sets)`,
-        message: `Research indicates diminishing returns and "junk volume" beyond ~8-10 sets per muscle in a single workout due to local fatigue. Consider capping ${muscle} at 8-10 sets and shifting extra sets to a second weekly session.`,
-        citation: 'Heaselgrave et al., Int J Sports Physiol Perform (2019)',
+        message: `Recent research demonstrates diminishing returns and "junk volume" beyond ~8-10 sets per muscle in a single workout due to local fatigue. Consider capping ${muscle} at 8-10 sets and shifting extra sets to a second weekly session.`,
+        citation: 'Robinson, Pelland et al. (2023) / Heaselgrave et al. (2019)',
       });
     } else if (sets >= 4 && sets <= 10) {
       muscleVolumeResult.push({ muscle, sets, status: 'OPTIMAL' });
@@ -159,7 +159,7 @@ export function evaluateTemplate(
         severity: 'STRENGTH',
         title: `Optimal ${muscle} Volume`,
         message: `${sets} sets provides a robust hypertrophic stimulus without entering the junk volume zone.`,
-        citation: 'Schoenfeld et al., J Sports Sci (2017)',
+        citation: 'Pelland, Wolf, Schoenfeld et al., Sports Med (2024)',
       });
     } else {
       muscleVolumeResult.push({ muscle, sets, status: 'LOW' });
@@ -211,7 +211,7 @@ export function evaluateTemplate(
           exerciseName: ex.exerciseName,
           title: `Short Rest on Compound: ${ex.exerciseName}`,
           message: `Rest interval is set to ${rest}s. A landmark randomized trial by Dr. Brad Schoenfeld showed that 3-minute rest periods produced superior muscle thickness and strength compared to 1-minute rest by preserving volume load. We recommend 120s to 180s for heavy multi-joint lifts.`,
-          citation: 'Schoenfeld et al., J Strength Cond Res (2016) #26605807',
+          citation: 'Longo et al., Eur J Sport Sci (2022) / Schoenfeld et al. (2016)',
         });
       }
     } else {
@@ -246,12 +246,12 @@ export function evaluateTemplate(
       severity: 'STRENGTH',
       title: 'Science-Backed Rest on Compounds',
       message: 'All multi-joint compound exercises have 120s+ rest, allowing adequate phosphocreatine and central nervous recovery.',
-      citation: 'Schoenfeld et al. (2016)',
+      citation: 'Longo et al. (2022) & Schoenfeld et al. (2016)',
     });
   }
 
   // 3. evaluate reps and intensity (max 25 pts)
-  // research: Refalo et al. (2022) & Baz-Valle et al. (2022)
+  // research: Refalo et al. (2023) & Baz-Valle et al. (2022)
   let repsScore = 25;
   let lowRepCount = 0;
   let veryHighRepCount = 0;
@@ -273,7 +273,7 @@ export function evaluateTemplate(
       severity: 'SUGGESTION',
       title: 'Low Rep Range Focus (< 5 reps)',
       message: 'Heavy low-rep sets (< 5 reps) are exceptional for maximal neurological strength peaking, but 6-15 reps generally achieves greater hypertrophic stimulus per unit of joint fatigue.',
-      citation: 'Refalo et al., Sports Med (2022)',
+      citation: 'Refalo, Helms et al., Sports Med (2023)',
     });
   }
 
@@ -295,12 +295,12 @@ export function evaluateTemplate(
       severity: 'STRENGTH',
       title: 'Hypertrophy Rep Range (6-20 reps)',
       message: 'All exercises sit cleanly within the optimal 6-20 rep hypertrophy spectrum.',
-      citation: 'Schoenfeld et al., J Sports Sci (2021)',
+      citation: 'Refalo et al. (2023) & Schoenfeld et al. (2021)',
     });
   }
 
   // 4. evaluate structure and exercise ordering (max 25 pts)
-  // research: Simão et al. (2012)
+  // research: Nunes et al. (2021) & Simão et al. (2012)
   let structureScore = 25;
   let foundIsolationFirst = false;
 
@@ -320,7 +320,7 @@ export function evaluateTemplate(
         exerciseName: current.exerciseName,
         title: `Compound Lift Ordered Later: ${current.exerciseName}`,
         message: `Compound movements require greater neuromuscular coordination and stabilizer recruitment. Research recommends placing heavy compounds early in the workout before pre-fatiguing with isolations.`,
-        citation: 'Simão et al., Sports Med (2012)',
+        citation: 'Nunes, Schoenfeld et al. (2021) / Simão et al. (2012)',
       });
       break;
     }
