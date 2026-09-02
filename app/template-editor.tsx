@@ -1,6 +1,6 @@
 // create and edit workout template screen with single target reps, rest controls, and science guide
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   Modal,
 } from 'react-native';
@@ -19,6 +18,8 @@ import { WorkoutTemplate, TemplateExercise, Exercise } from '../src/types/workou
 import { getTemplateById, saveTemplate } from '../src/database/queries/templateQueries';
 import { getAllExercises } from '../src/database/queries/exerciseQueries';
 import { ScienceGuidelinesModal } from '../src/components/ScienceGuidelinesModal';
+import { TemplateRatingModal } from '../src/components/TemplateRatingModal';
+import { evaluateTemplate } from '../src/utils/templateEvaluator';
 import { useAppAlert } from '../src/context/AlertContext';
 import { generateId as uuidv4 } from '../src/utils/uuid';
 
@@ -38,6 +39,10 @@ export default function TemplateEditorScreen() {
   const [pickerSearch, setPickerSearch] = useState('');
   const [pickerExercises, setPickerExercises] = useState<Exercise[]>([]);
   const [scienceModalVisible, setScienceModalVisible] = useState(false);
+  const [ratingModalVisible, setRatingModalVisible] = useState(false);
+
+  // evaluate routine against evidence-based benchmarks
+  const liveEvaluation = useMemo(() => evaluateTemplate(exercises, name), [exercises, name]);
 
   useEffect(() => {
     if (!db || !isReady) return;
@@ -138,6 +143,9 @@ export default function TemplateEditorScreen() {
       id: uuidv4(),
       exerciseId: ex.id,
       exerciseName: ex.name,
+      primaryMuscle: ex.primaryMuscle,
+      category: ex.category,
+      equipment: ex.equipment,
       order: exercises.length + 1,
       targetSets: 3,
       targetReps: 10,
@@ -187,9 +195,45 @@ export default function TemplateEditorScreen() {
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.content}>
+      {/* prominent evidence rating card */}
+      <TouchableOpacity
+        style={[
+          styles.ratingBanner,
+          {
+            backgroundColor: colors.card,
+            borderColor: exercises.length > 0 ? (liveEvaluation.overallScore >= 80 ? '#10b981' : '#f59e0b') : colors.border,
+          },
+        ]}
+        onPress={() => setRatingModalVisible(true)}
+        activeOpacity={0.8}
+      >
+        <View style={styles.ratingLeft}>
+          <Text style={{ fontSize: 24 }}>⭐</Text>
+        </View>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={[styles.ratingTitle, { color: colors.text }]}>EVIDENCE RATING</Text>
+            <Text
+              style={[
+                styles.ratingScorePill,
+                {
+                  color: exercises.length > 0 ? (liveEvaluation.overallScore >= 80 ? '#10b981' : '#f59e0b') : colors.textMuted,
+                },
+              ]}
+            >
+              {exercises.length > 0 ? `${liveEvaluation.overallScore}/100 (${liveEvaluation.letterGrade})` : 'UNRATED'}
+            </Text>
+          </View>
+          <Text style={[styles.ratingSub, { color: colors.textMuted }]} numberOfLines={1}>
+            {exercises.length > 0 ? liveEvaluation.gradeLabel : 'Tap to evaluate sets, rest times & volume'}
+          </Text>
+        </View>
+        <Text style={[styles.ratingArrow, { color: colors.secondary }]}>→</Text>
+      </TouchableOpacity>
+
       {/* prominent science guide banner */}
       <TouchableOpacity
-        style={[styles.guideBanner, { backgroundColor: colors.card, borderColor: colors.secondary }]}
+        style={[styles.guideBanner, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}
         onPress={() => setScienceModalVisible(true)}
         activeOpacity={0.8}
       >
@@ -451,6 +495,15 @@ export default function TemplateEditorScreen() {
         visible={scienceModalVisible}
         onClose={() => setScienceModalVisible(false)}
       />
+
+      {/* template rating modal */}
+      <TemplateRatingModal
+        visible={ratingModalVisible}
+        onClose={() => setRatingModalVisible(false)}
+        templateName={name || 'Untitled Routine'}
+        exercises={exercises}
+        onOpenScienceGuide={() => setScienceModalVisible(true)}
+      />
     </ScrollView>
   );
 }
@@ -467,6 +520,40 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  ratingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    marginBottom: 10,
+  },
+  ratingLeft: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ratingTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  ratingScorePill: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  ratingSub: {
+    fontSize: 11,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  ratingArrow: {
+    fontSize: 18,
+    fontWeight: '800',
+    paddingLeft: 8,
   },
   guideBanner: {
     flexDirection: 'row',

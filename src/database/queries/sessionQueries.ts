@@ -92,6 +92,8 @@ export async function createActiveWorkoutFromTemplate(
     repMax: number;
     includeInVolume?: boolean;
     notes?: string | null;
+    restBetweenSetsSeconds?: number;
+    restAfterExerciseSeconds?: number;
   }[] = [];
 
   if (templateId) {
@@ -116,6 +118,8 @@ export async function createActiveWorkoutFromTemplate(
           repMax: te.repMax ?? te.targetReps ?? 10,
           includeInVolume: te.includeInVolume !== false,
           notes: te.notes,
+          restBetweenSetsSeconds: te.restBetweenSetsSeconds ?? 120,
+          restAfterExerciseSeconds: te.restAfterExerciseSeconds ?? 120,
         }));
       }
     }
@@ -153,10 +157,20 @@ export async function createActiveWorkoutFromTemplate(
     const exerciseName = exDetail?.name || ed.exerciseName;
     const primaryMuscle = (exDetail?.primary_muscle as MuscleGroup) || 'CHEST';
 
+    // inherit rest times defined in the template
     await db.runAsync(
-      `INSERT INTO workout_session_exercises (id, session_id, exercise_id, exercise_order, include_in_volume, notes)
-       VALUES (?, ?, ?, ?, ?, ?);`,
-      [seId, sessionId, ed.exerciseId, i + 1, ed.includeInVolume !== false ? 1 : 0, ed.notes || null]
+      `INSERT INTO workout_session_exercises (id, session_id, exercise_id, exercise_order, include_in_volume, notes, rest_between_sets_seconds, rest_after_exercise_seconds)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+      [
+        seId,
+        sessionId,
+        ed.exerciseId,
+        i + 1,
+        ed.includeInVolume !== false ? 1 : 0,
+        ed.notes || null,
+        ed.restBetweenSetsSeconds ?? 120,
+        ed.restAfterExerciseSeconds ?? 120,
+      ]
     );
 
     // fetch previous performance for pre-filling!
@@ -197,6 +211,9 @@ export async function createActiveWorkoutFromTemplate(
       primaryMuscle,
       order: i + 1,
       notes: ed.notes,
+      restBetweenSetsSeconds: ed.restBetweenSetsSeconds ?? 120,
+      restAfterExerciseSeconds: ed.restAfterExerciseSeconds ?? 120,
+      includeInVolume: ed.includeInVolume !== false,
       sets,
       previousPerformance: previousSets,
     });

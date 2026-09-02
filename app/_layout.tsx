@@ -1,14 +1,14 @@
 // root application layout with theme and context providers
 
-import React, { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import React, { useEffect, useRef } from 'react';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as Notifications from 'expo-notifications';
 import { DatabaseProvider } from '../src/context/DatabaseContext';
 import { SettingsProvider } from '../src/context/SettingsContext';
 import { ThemeProvider, useAppTheme } from '../src/context/ThemeContext';
-import { WorkoutProvider } from '../src/context/WorkoutContext';
-import { PrToastBanner } from '../src/components/PrToastBanner';
+import { WorkoutProvider, useWorkout } from '../src/context/WorkoutContext';
 import { setupNotificationPermissions } from '../src/services/notifications';
 
 import { AlertProvider } from '../src/context/AlertContext';
@@ -20,6 +20,44 @@ function ThemedStatusBar() {
 
 function AppNavigator() {
   const { colors } = useAppTheme();
+  const router = useRouter();
+  const { activeSession } = useWorkout();
+  const activeSessionRef = useRef(activeSession);
+  const pendingNotificationTapRef = useRef(false);
+
+  useEffect(() => {
+    activeSessionRef.current = activeSession;
+  }, [activeSession]);
+
+  // listen for notification clicks to bring user back to the workout page
+  useEffect(() => {
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) {
+        if (activeSessionRef.current) {
+          router.push('/active-workout');
+        } else {
+          pendingNotificationTapRef.current = true;
+        }
+      }
+    }).catch(() => {});
+
+    const subscription = Notifications.addNotificationResponseReceivedListener(() => {
+      if (activeSessionRef.current) {
+        router.push('/active-workout');
+      } else {
+        pendingNotificationTapRef.current = true;
+      }
+    });
+
+    return () => subscription.remove();
+  }, [router]);
+
+  useEffect(() => {
+    if (pendingNotificationTapRef.current && activeSession) {
+      pendingNotificationTapRef.current = false;
+      router.push('/active-workout');
+    }
+  }, [activeSession, router]);
 
   return (
     <>

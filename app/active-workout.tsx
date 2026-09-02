@@ -123,7 +123,11 @@ export default function ActiveWorkoutScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content} removeClippedSubviews={true}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        removeClippedSubviews={true}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* session stats header banner */}
         <View style={[styles.headerBanner, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.workoutName, { color: colors.text }]}>{activeSession.name.toUpperCase()}</Text>

@@ -74,6 +74,9 @@ export interface TemplateExercise {
   templateId?: string;
   exerciseId: string;
   exerciseName?: string;
+  primaryMuscle?: MuscleGroup;
+  category?: MovementCategory;
+  equipment?: EquipmentType;
   order: number;
   targetSets: number;
   targetReps: number;
@@ -138,6 +141,7 @@ export type RecordType =
   | 'MAX_WEIGHT'
   | 'MAX_REPS_AT_WEIGHT'
   | 'MAX_E1RM'
+  | 'MAX_SET_VOLUME'
   | 'MAX_EXERCISE_VOLUME'
   | 'MAX_WORKOUT_VOLUME';
 

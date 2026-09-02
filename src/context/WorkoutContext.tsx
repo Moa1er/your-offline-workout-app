@@ -1,7 +1,7 @@
-// active workout context for state logging, auto saving, rest timers, and pr notifications
+// active workout context for state logging, auto saving, and rest timers
 
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { AppState, AppStateStatus, Alert } from 'react-native';
+import { AppState, AppStateStatus } from 'react-native';
 import { WorkoutSession, WorkoutSet } from '../types/workout';
 import { useDatabase } from './DatabaseContext';
 import { useSettings } from './SettingsContext';
@@ -16,8 +16,6 @@ import {
   finishWorkoutSession,
   discardActiveWorkout,
 } from '../database/queries/sessionQueries';
-import { getAllPersonalRecords } from '../database/queries/prQueries';
-import { checkSetForPrs } from '../utils/prDetector';
 import { calculateRemainingSeconds, ActiveTimerState, createRestTimer } from '../utils/timer';
 import {
   scheduleRestNotification,
@@ -28,20 +26,12 @@ import {
   triggerSetHaptic,
   triggerTimerFinishedHaptic,
 } from '../services/notifications';
-import { generateId } from '../utils/uuid';
-
-export interface PrToastMessage {
-  id: string;
-  exerciseName: string;
-  description: string;
-}
 
 interface WorkoutContextType {
   activeSession: WorkoutSession | null;
   isLoading: boolean;
   timerState: ActiveTimerState | null;
   remainingSeconds: number;
-  prToasts: PrToastMessage[];
   startWorkout: (templateId?: string) => Promise<WorkoutSession | null>;
   updateSet: (setId: string, updates: Partial<WorkoutSet>) => Promise<void>;
   toggleSetCompleted: (setId: string, exerciseName?: string) => Promise<void>;
@@ -54,7 +44,6 @@ interface WorkoutContextType {
   discardCurrentWorkout: () => Promise<void>;
   addTimerSeconds: (seconds: number) => void;
   skipTimer: () => void;
-  clearPrToast: (id: string) => void;
   refreshActiveSession: () => Promise<void>;
 }
 
@@ -63,7 +52,6 @@ const WorkoutContext = createContext<WorkoutContextType>({
   isLoading: true,
   timerState: null,
   remainingSeconds: 0,
-  prToasts: [],
   startWorkout: async () => null,
   updateSet: async () => {},
   toggleSetCompleted: async () => {},
@@ -76,7 +64,6 @@ const WorkoutContext = createContext<WorkoutContextType>({
   discardCurrentWorkout: async () => {},
   addTimerSeconds: () => {},
   skipTimer: () => {},
-  clearPrToast: () => {},
   refreshActiveSession: async () => {},
 });
 
@@ -92,9 +79,6 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [timerState, setTimerState] = useState<ActiveTimerState | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
   const notificationIdRef = useRef<string | null>(null);
-
-  // pr toasts
-  const [prToasts, setPrToasts] = useState<PrToastMessage[]>([]);
 
   // synchronous mirror of activeSession so rapid interactions never read stale state
   const activeSessionRef = useRef<WorkoutSession | null>(null);
@@ -328,9 +312,9 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const startRestTimer = async (durationSeconds: number, exerciseName?: string, type: 'SET_REST' | 'EXERCISE_REST' = 'SET_REST') => {
     if (durationSeconds <= 0) return;
 
-    if (notificationIdRef.current) {
-      await cancelNotification(notificationIdRef.current);
-    }
+    // clean up any previous timer notifications immediately
+    await cancelAllNotifications();
+    notificationIdRef.current = null;
 
     const newTimer = createRestTimer(durationSeconds, type, exerciseName);
     setTimerState(newTimer);
@@ -346,27 +330,44 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const addTimerSeconds = async (sec: number) => {
     if (!timerState) return;
     const newEndsAt = timerState.endsAt + sec * 1000;
+    const remaining = calculateRemainingSeconds(newEndsAt);
+
+    if (remaining <= 0) {
+      // timer reached 0 from subtracting seconds
+      if (notificationIdRef.current) {
+        await cancelNotification(notificationIdRef.current);
+        notificationIdRef.current = null;
+      }
+      if (settings.hapticFeedback) {
+        triggerTimerFinishedHaptic();
+      }
+      showRestTimerFinishedNotification(timerState.exerciseName, {
+        sound: settings.timerSound,
+        vibrate: settings.timerVibration,
+      });
+      setTimerState(null);
+      setRemainingSeconds(0);
+      return;
+    }
+
     const newDuration = Math.max(1, timerState.durationSeconds + sec);
     setTimerState({
       ...timerState,
       endsAt: newEndsAt,
       durationSeconds: newDuration,
     });
-    setRemainingSeconds(calculateRemainingSeconds(newEndsAt));
+    setRemainingSeconds(remaining);
 
-    // keep the local notification in sync with the extended end time
+    // keep the local notification in sync with the updated end time
     if (notificationIdRef.current) {
       await cancelNotification(notificationIdRef.current);
       notificationIdRef.current = null;
     }
-    const remaining = calculateRemainingSeconds(newEndsAt);
-    if (remaining > 0) {
-      const notifId = await scheduleRestNotification(remaining, timerState.exerciseName, {
-        sound: settings.timerSound,
-        vibrate: settings.timerVibration,
-      });
-      notificationIdRef.current = notifId;
-    }
+    const notifId = await scheduleRestNotification(remaining, timerState.exerciseName, {
+      sound: settings.timerSound,
+      vibrate: settings.timerVibration,
+    });
+    notificationIdRef.current = notifId;
   };
 
   const skipTimer = async () => {
@@ -435,26 +436,6 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (completedSet.completed) {
       if (settings.hapticFeedback) {
         triggerSetHaptic();
-      }
-
-      // check PRs
-      try {
-        const prs = await getAllPersonalRecords(db);
-        const prCheck = checkSetForPrs(exerciseId, completedSet, prs);
-        if (prCheck.isPr) {
-          prCheck.records.forEach((rec) => {
-            setPrToasts((prev) => [
-              ...prev,
-              {
-                id: generateId(),
-                exerciseName: exerciseName || 'Exercise',
-                description: rec.description,
-              },
-            ]);
-          });
-        }
-      } catch (err) {
-        console.error('error checking PR:', err);
       }
 
       // start rest timer automatically
@@ -619,10 +600,6 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     skipTimer();
   };
 
-  const clearPrToast = (id: string) => {
-    setPrToasts((prev) => prev.filter((p) => p.id !== id));
-  };
-
   return (
     <WorkoutContext.Provider
       value={{
@@ -630,7 +607,6 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
         isLoading,
         timerState,
         remainingSeconds,
-        prToasts,
         startWorkout,
         updateSet,
         toggleSetCompleted,
@@ -643,7 +619,6 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
         discardCurrentWorkout,
         addTimerSeconds,
         skipTimer,
-        clearPrToast,
         refreshActiveSession,
       }}
     >

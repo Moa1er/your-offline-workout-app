@@ -76,12 +76,14 @@ export async function recalculateAllPersonalRecords(
   const maxWeightMap: Record<string, { val: number; set: any }> = {};
   const maxRepsAtWeightMap: Record<string, { val: number; set: any }> = {};
   const maxE1rmMap: Record<string, { val: number; set: any }> = {};
+  const maxSetVolumeMap: Record<string, { val: number; set: any }> = {};
 
   for (const set of sets) {
     const exId = set.exercise_id;
     const weight = set.weight_kg;
     const reps = set.reps;
     const e1rm = calculateE1RM(weight, reps);
+    const setVol = weight * reps;
 
     // 1. max weight
     if (!maxWeightMap[exId] || weight > maxWeightMap[exId].val) {
@@ -97,6 +99,11 @@ export async function recalculateAllPersonalRecords(
     // 3. max e1rm
     if (e1rm > 0 && (!maxE1rmMap[exId] || e1rm > maxE1rmMap[exId].val)) {
       maxE1rmMap[exId] = { val: e1rm, set };
+    }
+
+    // 4. max set volume
+    if (setVol > 0 && (!maxSetVolumeMap[exId] || setVol > maxSetVolumeMap[exId].val)) {
+      maxSetVolumeMap[exId] = { val: setVol, set };
     }
   }
 
@@ -142,6 +149,24 @@ export async function recalculateAllPersonalRecords(
     await db.runAsync(
       `INSERT INTO personal_records (id, exercise_id, record_type, value, weight_kg, reps, set_id, session_id, achieved_at)
        VALUES (?, ?, 'MAX_E1RM', ?, ?, ?, ?, ?, ?);`,
+      [
+        uuidv4(),
+        exId,
+        item.val,
+        item.set.weight_kg,
+        item.set.reps,
+        item.set.id,
+        item.set.session_id,
+        item.set.achieved_at || new Date().toISOString(),
+      ]
+    );
+  }
+
+  for (const exId of Object.keys(maxSetVolumeMap)) {
+    const item = maxSetVolumeMap[exId];
+    await db.runAsync(
+      `INSERT INTO personal_records (id, exercise_id, record_type, value, weight_kg, reps, set_id, session_id, achieved_at)
+       VALUES (?, ?, 'MAX_SET_VOLUME', ?, ?, ?, ?, ?, ?);`,
       [
         uuidv4(),
         exId,

@@ -1,4 +1,4 @@
-﻿// floating rest timer overlay bar for active workout sessions
+// floating rest timer overlay bar for active workout sessions
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
@@ -31,15 +31,15 @@ export const RestTimerOverlay: React.FC = () => {
       <View style={styles.controlsRow}>
         <TouchableOpacity
           style={[styles.button, { backgroundColor: colors.cardAlt, borderColor: colors.border, borderWidth: 1 }]}
-          onPress={() => addTimerSeconds(15)}
+          onPress={() => addTimerSeconds(-15)}
         >
-          <Text style={[styles.buttonText, { color: colors.text }]}>+15s</Text>
+          <Text style={[styles.buttonText, { color: colors.text }]}>-15s</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.button, { backgroundColor: colors.cardAlt, borderColor: colors.border, borderWidth: 1 }]}
-          onPress={() => addTimerSeconds(30)}
+          onPress={() => addTimerSeconds(15)}
         >
-          <Text style={[styles.buttonText, { color: colors.text }]}>+30s</Text>
+          <Text style={[styles.buttonText, { color: colors.text }]}>+15s</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.button, { backgroundColor: colors.cardAlt, borderColor: colors.danger, borderWidth: 1 }]}

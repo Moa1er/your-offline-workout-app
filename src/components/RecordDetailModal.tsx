@@ -1,4 +1,4 @@
-﻿// hevy-style celebratory record modal for volume records and prs
+// hevy-style celebratory record modal for volume records and prs
 
 import React from 'react';
 import {
@@ -98,7 +98,7 @@ export const RecordDetailModal: React.FC<RecordDetailModalProps> = ({
                 onPress={onClose}
                 activeOpacity={0.85}
               >
-                <Text style={[styles.closeBtnText, { color: colors.primaryText }]}>LET'S GO! 🔥</Text>
+                <Text style={[styles.closeBtnText, { color: colors.primaryText }]}>{"LET'S GO! 🔥"}</Text>
               </TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>

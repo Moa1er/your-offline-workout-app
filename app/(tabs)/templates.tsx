@@ -1,5 +1,3 @@
-// saved workout templates management screen with comparison, research info, and json import
-
 import React, { useCallback, useState } from 'react';
 import {
   View,
@@ -8,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useDatabase } from '../../src/context/DatabaseContext';
@@ -22,6 +19,8 @@ import {
 import { importTemplatesFromJsonFile } from '../../src/services/importExport';
 import { TemplateCompareModal } from '../../src/components/TemplateCompareModal';
 import { ScienceGuidelinesModal } from '../../src/components/ScienceGuidelinesModal';
+import { TemplateRatingModal } from '../../src/components/TemplateRatingModal';
+import { evaluateTemplate } from '../../src/utils/templateEvaluator';
 import { useAppAlert } from '../../src/context/AlertContext';
 
 export default function TemplatesScreen() {
@@ -35,6 +34,8 @@ export default function TemplatesScreen() {
   const [importing, setImporting] = useState(false);
   const [compareModalVisible, setCompareModalVisible] = useState(false);
   const [scienceModalVisible, setScienceModalVisible] = useState(false);
+  const [ratingModalVisible, setRatingModalVisible] = useState(false);
+  const [selectedRatingTemplate, setSelectedRatingTemplate] = useState<WorkoutTemplate | null>(null);
 
   const loadTemplates = useCallback(async (): Promise<WorkoutTemplate[]> => {
     if (!db) return [];
@@ -194,6 +195,17 @@ export default function TemplatesScreen() {
         {templates.map((tmpl) => {
           const createdStr = formatTimestamp(tmpl.createdAt);
           const updatedStr = formatTimestamp(tmpl.updatedAt);
+          const evaluation = evaluateTemplate(tmpl.exercises, tmpl.name);
+          const scoreColor =
+            evaluation.overallScore >= 90
+              ? '#8b5cf6'
+              : evaluation.overallScore >= 80
+              ? '#10b981'
+              : evaluation.overallScore >= 70
+              ? '#2563eb'
+              : evaluation.overallScore >= 60
+              ? '#f59e0b'
+              : '#ef4444';
 
           return (
             <View
@@ -201,10 +213,32 @@ export default function TemplatesScreen() {
               style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
             >
               <View style={styles.cardHeader}>
-                <Text style={[styles.templateTitle, { color: colors.text }]}>{tmpl.name}</Text>
-                <Text style={[styles.exBadge, { color: colors.secondary }]}>
-                  {tmpl.exercises.length} exercises
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.templateTitle, { color: colors.text }]}>{tmpl.name}</Text>
+                  <Text style={[styles.exBadge, { color: colors.secondary }]}>
+                    {tmpl.exercises.length} exercises
+                  </Text>
+                </View>
+
+                {/* evidence-based rating badge */}
+                <TouchableOpacity
+                  style={[
+                    styles.ratingPill,
+                    {
+                      backgroundColor: `${scoreColor}18`,
+                      borderColor: scoreColor,
+                    },
+                  ]}
+                  onPress={() => {
+                    setSelectedRatingTemplate(tmpl);
+                    setRatingModalVisible(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.ratingPillText, { color: scoreColor }]}>
+                    ⭐ {evaluation.overallScore} ({evaluation.letterGrade})
+                  </Text>
+                </TouchableOpacity>
               </View>
 
               {tmpl.description ? (
@@ -243,6 +277,16 @@ export default function TemplatesScreen() {
               </View>
 
               <View style={styles.actionRow}>
+                <TouchableOpacity
+                  style={[styles.rateBtn, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}
+                  onPress={() => {
+                    setSelectedRatingTemplate(tmpl);
+                    setRatingModalVisible(true);
+                  }}
+                >
+                  <Text style={[styles.rateBtnText, { color: colors.secondary }]}>⭐ RATE</Text>
+                </TouchableOpacity>
+
                 <TouchableOpacity
                   style={[styles.editBtn, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}
                   onPress={() => router.push({ pathname: '/template-editor', params: { id: tmpl.id } })}
@@ -304,6 +348,20 @@ export default function TemplatesScreen() {
         visible={scienceModalVisible}
         onClose={() => setScienceModalVisible(false)}
       />
+
+      {/* template rating modal */}
+      {selectedRatingTemplate && (
+        <TemplateRatingModal
+          visible={ratingModalVisible}
+          onClose={() => {
+            setRatingModalVisible(false);
+            setSelectedRatingTemplate(null);
+          }}
+          templateName={selectedRatingTemplate.name}
+          exercises={selectedRatingTemplate.exercises}
+          onOpenScienceGuide={() => setScienceModalVisible(true)}
+        />
+      )}
     </View>
   );
 }
@@ -449,9 +507,33 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  ratingPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  ratingPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
   actionRow: {
     flexDirection: 'row',
     gap: 8,
+  },
+  rateBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  rateBtnText: {
+    fontWeight: '800',
+    fontSize: 12,
   },
   editBtn: {
     flex: 1,

@@ -1,7 +1,7 @@
-﻿// inline exercise logging table with ultra-fast local state set inputs and record modal
+// inline exercise logging table with ultra-fast local state set inputs and record modal
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Keyboard } from 'react-native';
 import { SessionExercise, WorkoutSet, SetType } from '../types/workout';
 import { useWorkout } from '../context/WorkoutContext';
 import { useSettings } from '../context/SettingsContext';
@@ -112,7 +112,7 @@ const SetRowItem: React.FC<SetRowItemProps> = React.memo(({
       case 'DROP_SET':
         return { label: 'D', color: colors.primary };
       default:
-        return { label: '', color: colors.secondary };
+        return { label: '', color: colors.text };
     }
   };
 
@@ -122,55 +122,61 @@ const SetRowItem: React.FC<SetRowItemProps> = React.memo(({
   const prevRepsDisplay = prevSet ? String(prevSet.reps) : '0';
   const typeBadge = getSetTypeBadge(set.type);
 
+  // trophy evaluates volume per set (weight * reps), not just raw reps count
+  const prevSetVol = prevSet ? prevSet.weightKg * prevSet.reps : 0;
   const setVol = set.weightKg * set.reps;
   const isSetVolRecord =
     set.completed &&
     set.type !== 'WARMUP' &&
-    historicalBest &&
-    historicalBest.bestSetVolume > 0 &&
-    setVol > historicalBest.bestSetVolume;
-
-  const isWeightRecord =
-    set.completed &&
-    set.type !== 'WARMUP' &&
-    historicalBest &&
-    historicalBest.maxWeight > 0 &&
-    set.weightKg > historicalBest.maxWeight;
+    setVol > 0 &&
+    ((historicalBest && historicalBest.bestSetVolume > 0 && setVol > historicalBest.bestSetVolume) ||
+      (prevSetVol > 0 && setVol > prevSetVol));
 
   return (
     <View
       style={[
         styles.tableRow,
         { borderBottomColor: colors.border },
-        set.completed && { backgroundColor: `${colors.success}15` },
+        set.completed && { backgroundColor: '#2563eb12' },
       ]}
     >
-      {/* set number & type toggle or record trophy */}
+      {/* set number cell with normal white/input background like other cells */}
       <TouchableOpacity
-        style={[styles.setNumBox, { backgroundColor: typeBadge.color }]}
+        style={[
+          styles.setNumBox,
+          {
+            backgroundColor: colors.inputBg,
+            borderColor: colors.inputBorder,
+            borderWidth: 1,
+          },
+        ]}
         onPress={() => {
-          if (isSetVolRecord || isWeightRecord) {
+          if (isSetVolRecord) {
             onOpenRecord({
-              type: isWeightRecord ? 'MAX_WEIGHT' : 'SET_VOLUME',
-              title: isWeightRecord ? 'Max Weight Personal Record' : 'Best Set Volume Record',
+              type: 'SET_VOLUME',
+              title: 'Best Set Volume Record',
               badge: '🏆 PR',
               exerciseName,
-              currentValue: isWeightRecord ? set.weightKg : setVol,
-              previousBest: isWeightRecord ? historicalBest.maxWeight : historicalBest.bestSetVolume,
-              improvement: isWeightRecord
-                ? set.weightKg - historicalBest.maxWeight
-                : setVol - historicalBest.bestSetVolume,
-              improvementPercent: isWeightRecord
-                ? ((set.weightKg - historicalBest.maxWeight) / historicalBest.maxWeight) * 100
-                : ((setVol - historicalBest.bestSetVolume) / historicalBest.bestSetVolume) * 100,
+              currentValue: setVol,
+              previousBest: historicalBest?.bestSetVolume || prevSetVol,
+              improvement: setVol - (historicalBest?.bestSetVolume || prevSetVol),
+              improvementPercent:
+                (((setVol - (historicalBest?.bestSetVolume || prevSetVol)) /
+                  (historicalBest?.bestSetVolume || prevSetVol || 1)) *
+                  100),
             });
           } else {
             toggleSetType();
           }
         }}
       >
-        <Text style={styles.setNumText}>
-          {isSetVolRecord || isWeightRecord
+        <Text
+          style={[
+            styles.setNumText,
+            { color: isSetVolRecord ? '#eab308' : typeBadge.label ? typeBadge.color : colors.text },
+          ]}
+        >
+          {isSetVolRecord
             ? '🏆'
             : typeBadge.label
             ? typeBadge.label
@@ -222,14 +228,18 @@ const SetRowItem: React.FC<SetRowItemProps> = React.memo(({
         />
       </View>
 
-      {/* single-tap complete checkmark */}
+      {/* single-tap complete checkmark with blue active background & keyboard dismiss */}
       <TouchableOpacity
         style={[
           styles.checkBtn,
           { backgroundColor: colors.cardAlt, borderColor: colors.border },
-          set.completed && { backgroundColor: colors.success, borderColor: colors.success },
+          set.completed && { backgroundColor: '#2563eb', borderColor: '#2563eb' },
         ]}
-        onPress={() => onToggleCompleted(set.id, exerciseName)}
+        onPress={() => {
+          // dismiss keyboard on checkmark tap
+          Keyboard.dismiss();
+          onToggleCompleted(set.id, exerciseName);
+        }}
       >
         <Text
           style={[
@@ -292,15 +302,37 @@ export const ExerciseSetTable: React.FC<ExerciseSetTableProps> = React.memo(({ e
     };
   }, [db, exercise.exerciseId, activeSession?.id]);
 
-  // compute current session volume for this exercise
-  const currentVolume = exercise.sets
+  // compute previous workout volume for this exercise
+  const previousVolumeKg = (exercise.previousPerformance || [])
+    .filter((s) => s.type !== 'WARMUP')
+    .reduce((sum, s) => sum + s.weightKg * s.reps, 0);
+
+  // compute current session volume accumulating as user checks sets
+  const currentVolumeKg = exercise.sets
     .filter((s) => s.completed && s.type !== 'WARMUP' && isIncludedInVolume)
     .reduce((sum, s) => sum + s.weightKg * s.reps, 0);
+
+  const displayPrevVol = Math.round(isLb ? convertKgToLb(previousVolumeKg) : previousVolumeKg);
+  const displayCurrVol = Math.round(isLb ? convertKgToLb(currentVolumeKg) : currentVolumeKg);
+
+  // color coding for current volume: red if below, green if above, blue if same
+  let currentVolColor = colors.text;
+  if (displayPrevVol > 0) {
+    if (displayCurrVol < displayPrevVol) {
+      currentVolColor = '#ef4444';
+    } else if (displayCurrVol > displayPrevVol) {
+      currentVolColor = '#10b981';
+    } else {
+      currentVolColor = '#2563eb';
+    }
+  } else if (displayCurrVol > 0) {
+    currentVolColor = '#10b981';
+  }
 
   const isVolumeRecord =
     historicalBest &&
     historicalBest.maxExerciseVolume > 0 &&
-    currentVolume > historicalBest.maxExerciseVolume;
+    currentVolumeKg > historicalBest.maxExerciseVolume;
 
   const changeSetRest = (delta: number) => {
     const next = Math.max(0, setRestSec + delta);
@@ -317,7 +349,7 @@ export const ExerciseSetTable: React.FC<ExerciseSetTableProps> = React.memo(({ e
   }, []);
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.card, borderColor: isVolumeRecord ? '#FFD700' : colors.border }]}>
+    <View style={[styles.card, { backgroundColor: colors.card, borderColor: isVolumeRecord ? '#f59e0b' : colors.border }]}>
       {/* exercise title & muscle group header */}
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
@@ -332,30 +364,42 @@ export const ExerciseSetTable: React.FC<ExerciseSetTableProps> = React.memo(({ e
           </Text>
         </View>
 
-        {/* celebratory volume record badge */}
-        {isVolumeRecord && (
-          <TouchableOpacity
-            style={[styles.recordChip, { backgroundColor: '#FFD70020', borderColor: '#FFD700' }]}
-            onPress={() =>
-              setSelectedRecord({
-                type: 'EXERCISE_VOLUME',
-                title: 'Exercise Volume Record',
-                badge: '🏆 BEST VOLUME',
-                exerciseName: exercise.exerciseName,
-                currentValue: currentVolume,
-                previousBest: historicalBest?.maxExerciseVolume ?? 0,
-                improvement: currentVolume - (historicalBest?.maxExerciseVolume ?? 0),
-                improvementPercent:
-                  ((currentVolume - (historicalBest?.maxExerciseVolume ?? 0)) /
-                    (historicalBest?.maxExerciseVolume || 1)) *
-                  100,
-              })
-            }
-            activeOpacity={0.8}
-          >
-            <Text style={styles.recordChipText}>🏆 BEST VOLUME</Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.headerRight}>
+          {/* previous and current volume comparison pill */}
+          <View style={[styles.volumePill, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}>
+            <Text style={[styles.volumeLabel, { color: colors.textMuted }]}>
+              P: <Text style={{ color: colors.text, fontWeight: '700' }}>{displayPrevVol}</Text>
+            </Text>
+            <Text style={[styles.volumeLabel, { color: colors.textMuted, marginLeft: 8 }]}>
+              C: <Text style={{ color: currentVolColor, fontWeight: '800' }}>{displayCurrVol}</Text>
+            </Text>
+          </View>
+
+          {/* celebratory volume record badge */}
+          {isVolumeRecord && (
+            <TouchableOpacity
+              style={[styles.recordChip, { backgroundColor: '#f59e0b20', borderColor: '#f59e0b' }]}
+              onPress={() =>
+                setSelectedRecord({
+                  type: 'EXERCISE_VOLUME',
+                  title: 'Exercise Volume Record',
+                  badge: '🏆 BEST VOLUME',
+                  exerciseName: exercise.exerciseName,
+                  currentValue: currentVolumeKg,
+                  previousBest: historicalBest?.maxExerciseVolume ?? 0,
+                  improvement: currentVolumeKg - (historicalBest?.maxExerciseVolume ?? 0),
+                  improvementPercent:
+                    ((currentVolumeKg - (historicalBest?.maxExerciseVolume ?? 0)) /
+                      (historicalBest?.maxExerciseVolume || 1)) *
+                    100,
+                })
+              }
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.recordChipText, { color: '#f59e0b' }]}>🏆 BEST</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* exercise notes input */}
@@ -504,6 +548,24 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  volumePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  volumeLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
   recordChip: {
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -513,7 +575,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   recordChipText: {
-    color: '#FFD700',
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.5,

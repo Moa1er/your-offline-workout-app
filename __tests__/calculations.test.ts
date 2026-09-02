@@ -35,4 +35,34 @@ describe('calculations utility', () => {
     expect(lb).toBeCloseTo(220.5, 0);
     expect(convertLbToKg(lb)).toBeCloseTo(100, 0);
   });
+
+  test('checkSetForPrs detects max set volume personal record', () => {
+    const existingPrs: any[] = [
+      {
+        id: 'pr1',
+        exerciseId: 'ex1',
+        recordType: 'MAX_SET_VOLUME',
+        value: 800,
+        achievedAt: '2026-08-01T10:00:00.000Z',
+      },
+    ];
+
+    // 90kg * 10 reps = 900kg volume > 800kg
+    const completedSet: any = {
+      id: 's1',
+      sessionExerciseId: 'se1',
+      setNumber: 1,
+      type: 'WORKING',
+      weightKg: 90,
+      reps: 10,
+      completed: true,
+    };
+
+    const { checkSetForPrs } = require('../src/utils/prDetector');
+    const result = checkSetForPrs('ex1', completedSet, existingPrs);
+    expect(result.isPr).toBe(true);
+    const volPr = result.records.find((r: any) => r.type === 'MAX_SET_VOLUME');
+    expect(volPr).toBeDefined();
+    expect(volPr.value).toBe(900);
+  });
 });

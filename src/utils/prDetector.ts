@@ -6,7 +6,7 @@ import { calculateE1RM } from './calculations';
 export interface PrDetectionResult {
   isPr: boolean;
   records: {
-    type: 'MAX_WEIGHT' | 'MAX_REPS_AT_WEIGHT' | 'MAX_E1RM';
+    type: 'MAX_WEIGHT' | 'MAX_REPS_AT_WEIGHT' | 'MAX_E1RM' | 'MAX_SET_VOLUME';
     value: number;
     description: string;
   }[];
@@ -26,7 +26,7 @@ export function checkSetForPrs(
 
   const exercisePrs = existingPrs.filter((pr) => pr.exerciseId === exerciseId);
   const detectedPrs: {
-    type: 'MAX_WEIGHT' | 'MAX_REPS_AT_WEIGHT' | 'MAX_E1RM';
+    type: 'MAX_WEIGHT' | 'MAX_REPS_AT_WEIGHT' | 'MAX_E1RM' | 'MAX_SET_VOLUME';
     value: number;
     description: string;
   }[] = [];
@@ -42,7 +42,19 @@ export function checkSetForPrs(
     });
   }
 
-  // 2. check max reps at this specific weight
+  // 2. check max set volume record (weight * reps)
+  const setVol = set.weightKg * set.reps;
+  const maxSetVolPr = exercisePrs.find((p) => p.recordType === 'MAX_SET_VOLUME');
+  const currentMaxSetVol = maxSetVolPr ? maxSetVolPr.value : 0;
+  if (setVol > currentMaxSetVol) {
+    detectedPrs.push({
+      type: 'MAX_SET_VOLUME',
+      value: setVol,
+      description: `Best Set Volume: ${setVol} kg`,
+    });
+  }
+
+  // 3. check max reps at this specific weight
   const weightRepsPrs = exercisePrs.filter((p) => p.recordType === 'MAX_REPS_AT_WEIGHT');
   const matchingWeightPr = weightRepsPrs.find((p) => p.weightKg === set.weightKg);
   const currentMaxRepsAtWeight = matchingWeightPr ? matchingWeightPr.reps || 0 : 0;
@@ -54,7 +66,7 @@ export function checkSetForPrs(
     });
   }
 
-  // 3. check max e1rm
+  // 4. check max e1rm
   const e1rmPr = exercisePrs.find((p) => p.recordType === 'MAX_E1RM');
   const currentMaxE1rm = e1rmPr ? e1rmPr.value : 0;
   const setE1rm = calculateE1RM(set.weightKg, set.reps);

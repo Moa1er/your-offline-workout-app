@@ -1,7 +1,5 @@
-// unfinished active workout prompt card on home screen
-
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useWorkout } from '../context/WorkoutContext';
 import { useAppTheme } from '../context/ThemeContext';
@@ -14,9 +12,22 @@ export const ActiveWorkoutCard: React.FC = () => {
   const { showConfirm } = useAppAlert();
   const router = useRouter();
 
-  if (!activeSession) return null;
+  const [elapsedTime, setElapsedTime] = useState(() =>
+    activeSession ? calculateElapsedTime(activeSession.startedAt) : ''
+  );
 
-  const elapsedTime = calculateElapsedTime(activeSession.startedAt);
+  // keep elapsed time ticking every second so it never stays frozen
+  useEffect(() => {
+    if (!activeSession?.startedAt) return;
+    const updateElapsed = () => {
+      setElapsedTime(calculateElapsedTime(activeSession.startedAt));
+    };
+    updateElapsed();
+    const interval = setInterval(updateElapsed, 1000);
+    return () => clearInterval(interval);
+  }, [activeSession?.startedAt]);
+
+  if (!activeSession) return null;
 
   const handleDiscard = () => {
     showConfirm(

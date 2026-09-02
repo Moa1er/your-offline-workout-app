@@ -1,4 +1,4 @@
-﻿// modal for selecting and searching exercises to add to session
+// modal for selecting and searching exercises to add to session
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -49,10 +49,10 @@ export default function ExercisePickerScreen() {
     const seId = `se_${uuidv4()}`;
     const order = activeSession.exercises.length + 1;
 
-    // insert session exercise
+    // insert session exercise with default rest timers
     await db.runAsync(
-      `INSERT INTO workout_session_exercises (id, session_id, exercise_id, exercise_order, include_in_volume)
-       VALUES (?, ?, ?, ?, 1);`,
+      `INSERT INTO workout_session_exercises (id, session_id, exercise_id, exercise_order, include_in_volume, rest_between_sets_seconds, rest_after_exercise_seconds)
+       VALUES (?, ?, ?, ?, 1, 120, 120);`,
       [seId, activeSession.id, exercise.id, order]
     );
 

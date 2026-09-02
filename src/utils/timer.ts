@@ -38,11 +38,28 @@ export function calculateRemainingSeconds(endsAt: number, nowMs: number = Date.n
 }
 
 /**
+ * parses date strings from sqlite or iso safely into epoch milliseconds
+ */
+export function parseIsoDateMs(dateStr?: string | null): number {
+  if (!dateStr) return Date.now();
+  let normalized = dateStr.trim();
+  if (normalized.includes(' ') && !normalized.includes('T')) {
+    normalized = normalized.replace(' ', 'T') + (normalized.endsWith('Z') ? '' : 'Z');
+  }
+  const ms = new Date(normalized).getTime();
+  if (isNaN(ms)) {
+    const fallback = new Date(dateStr).getTime();
+    return isNaN(fallback) ? Date.now() : fallback;
+  }
+  return ms;
+}
+
+/**
  * calculates total elapsed time formatted as string (e.g. 1h 04m or 42:17)
  */
 export function calculateElapsedTime(startedAtIso: string, finishedAtIso?: string | null): string {
-  const start = new Date(startedAtIso).getTime();
-  const end = finishedAtIso ? new Date(finishedAtIso).getTime() : Date.now();
+  const start = parseIsoDateMs(startedAtIso);
+  const end = finishedAtIso ? parseIsoDateMs(finishedAtIso) : Date.now();
   const diffMs = Math.max(0, end - start);
   const totalSeconds = Math.floor(diffMs / 1000);
 

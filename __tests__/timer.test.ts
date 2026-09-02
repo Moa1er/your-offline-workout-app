@@ -4,6 +4,7 @@ import { describe, test, expect } from '@jest/globals';
 import {
   calculateRemainingSeconds,
   formatTimerSeconds,
+  calculateElapsedTime,
 } from '../src/utils/timer';
 
 describe('timer utility', () => {
@@ -30,5 +31,21 @@ describe('timer utility', () => {
     expect(formatTimerSeconds(150)).toBe('02:30');
     expect(formatTimerSeconds(5)).toBe('00:05');
     expect(formatTimerSeconds(0)).toBe('00:00');
+  });
+
+  test('calculateElapsedTime computes formatted elapsed duration correctly', () => {
+    // 75 seconds difference
+    const startIso = new Date('2026-09-02T10:00:00.000Z').toISOString();
+    const endIso = new Date('2026-09-02T10:01:15.000Z').toISOString();
+    expect(calculateElapsedTime(startIso, endIso)).toBe('01:15');
+
+    // over an hour
+    const longEndIso = new Date('2026-09-02T11:23:45.000Z').toISOString();
+    expect(calculateElapsedTime(startIso, longEndIso)).toBe('1h 23m');
+
+    // space-separated sqlite date format
+    const sqliteStart = '2026-09-02 10:00:00';
+    const sqliteEnd = '2026-09-02 10:02:30';
+    expect(calculateElapsedTime(sqliteStart, sqliteEnd)).toBe('02:30');
   });
 });

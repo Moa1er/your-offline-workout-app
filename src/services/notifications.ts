@@ -1,14 +1,14 @@
-﻿// local notifications and haptics wrapper for rest timers with live notification bar countdown
+// local notifications and haptics wrapper for rest timers with live notification bar countdown
 
 import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
-import { Platform } from 'react-native';
+import { Platform, Vibration } from 'react-native';
 
 export const REST_TIMER_NOTIFICATION_ID = 'ACTIVE_REST_TIMER';
 export const REST_TIMER_COMPLETE_ID = 'REST_TIMER_COMPLETE';
 
-const LIVE_CHANNEL_ID = 'rest_timer_live_v5';
-const ALERTS_CHANNEL_ID = 'rest_timer_alerts_v5';
+const LIVE_CHANNEL_ID = 'rest_timer_live_v6';
+const ALERTS_CHANNEL_ID = 'rest_timer_alerts_v6';
 
 // configure notification handler for local alerts
 Notifications.setNotificationHandler({
@@ -38,6 +38,8 @@ export async function setupNotificationPermissions(): Promise<boolean> {
       await Notifications.deleteNotificationChannelAsync('rest_timer_alerts_v3');
       await Notifications.deleteNotificationChannelAsync('rest_timer_live_v4');
       await Notifications.deleteNotificationChannelAsync('rest_timer_alerts_v4');
+      await Notifications.deleteNotificationChannelAsync('rest_timer_live_v5');
+      await Notifications.deleteNotificationChannelAsync('rest_timer_alerts_v5');
     } catch {}
 
     await Notifications.setNotificationChannelAsync(LIVE_CHANNEL_ID, {
@@ -51,8 +53,9 @@ export async function setupNotificationPermissions(): Promise<boolean> {
 
     await Notifications.setNotificationChannelAsync(ALERTS_CHANNEL_ID, {
       name: 'Rest Timer Alerts',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
+      importance: Notifications.AndroidImportance.MAX,
+      sound: 'default',
+      vibrationPattern: [0, 500, 250, 500],
       lightColor: '#FF2D95',
       enableVibrate: true,
       showBadge: false,
@@ -127,8 +130,8 @@ export async function showRestTimerFinishedNotification(
         title,
         body,
         color: '#FF2D95',
-        sound: options?.sound !== false,
-        ...(options?.vibrate !== false ? { vibrate: [0, 250, 250, 250] } : {}),
+        sound: options?.sound !== false ? 'default' : undefined,
+        ...(options?.vibrate !== false ? { vibrate: [0, 500, 250, 500] } : {}),
         priority: Notifications.AndroidNotificationPriority.HIGH,
         data: { channelId: ALERTS_CHANNEL_ID },
       },
@@ -183,12 +186,16 @@ export async function scheduleRestNotification(
   if (Platform.OS === 'web' || seconds <= 0) return null;
 
   try {
+    // cancel existing scheduled alert to prevent piling up notifications
+    await Notifications.cancelScheduledNotificationAsync(REST_TIMER_COMPLETE_ID).catch(() => {});
+
     const title = 'REST COMPLETE! 🔔';
     const body = exerciseName ? `${exerciseName} - Timer is done! Start your next set!` : 'Timer is done! Start your next set!';
-    const sound = options?.sound !== false;
-    const vibrate = options?.vibrate === false ? undefined : [0, 250, 250, 250];
+    const sound = options?.sound !== false ? 'default' : undefined;
+    const vibrate = options?.vibrate === false ? undefined : [0, 500, 250, 500];
 
     const notificationId = await Notifications.scheduleNotificationAsync({
+      identifier: REST_TIMER_COMPLETE_ID,
       content: {
         title,
         body,
@@ -228,6 +235,8 @@ export async function triggerSetHaptic(): Promise<void> {
 export async function triggerTimerFinishedHaptic(): Promise<void> {
   if (Platform.OS === 'web') return;
   try {
+    // real hardware vibration for noticeable gym alerts
+    Vibration.vibrate([0, 500, 250, 500]);
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
   } catch {
     console.log('haptics unavailable');

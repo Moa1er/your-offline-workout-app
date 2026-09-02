@@ -13,7 +13,7 @@ export async function getAllTemplates(db: SQLite.SQLiteDatabase): Promise<Workou
 
   const placeholders = templates.map(() => '?').join(', ');
   const exercises = await db.getAllAsync<any>(
-    `SELECT te.*, e.name as exercise_name
+    `SELECT te.*, e.name as exercise_name, e.primary_muscle, e.category, e.equipment
      FROM workout_template_exercises te
      LEFT JOIN exercises e ON te.exercise_id = e.id
      WHERE te.template_id IN (${placeholders})
@@ -40,6 +40,9 @@ export async function getAllTemplates(db: SQLite.SQLiteDatabase): Promise<Workou
       templateId: e.template_id,
       exerciseId: e.exercise_id,
       exerciseName: e.exercise_name || 'Exercise',
+      primaryMuscle: e.primary_muscle,
+      category: e.category,
+      equipment: e.equipment,
       order: e.exercise_order,
       targetSets: e.target_sets,
       targetReps: e.target_reps ?? e.rep_max ?? e.rep_min ?? 10,
@@ -65,7 +68,7 @@ export async function getTemplateById(
   if (!t) return null;
 
   const exercises = await db.getAllAsync<any>(
-    `SELECT te.*, e.name as exercise_name
+    `SELECT te.*, e.name as exercise_name, e.primary_muscle, e.category, e.equipment
      FROM workout_template_exercises te
      LEFT JOIN exercises e ON te.exercise_id = e.id
      WHERE te.template_id = ?
@@ -84,6 +87,9 @@ export async function getTemplateById(
       templateId: e.template_id,
       exerciseId: e.exercise_id,
       exerciseName: e.exercise_name,
+      primaryMuscle: e.primary_muscle,
+      category: e.category,
+      equipment: e.equipment,
       order: e.exercise_order,
       targetSets: e.target_sets,
       targetReps: e.target_reps ?? e.rep_max ?? e.rep_min ?? 10,
