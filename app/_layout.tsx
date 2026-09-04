@@ -1,8 +1,9 @@
 // root application layout with theme and context providers
 
-import React, { useEffect, useRef } from 'react';
-import { Stack, useRouter } from 'expo-router';
+import React, { useEffect, useRef, useCallback } from 'react';
+import { Stack, useRouter, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { TouchableOpacity, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { DatabaseProvider } from '../src/context/DatabaseContext';
@@ -21,43 +22,57 @@ function ThemedStatusBar() {
 function AppNavigator() {
   const { colors } = useAppTheme();
   const router = useRouter();
+  const pathname = usePathname();
   const { activeSession } = useWorkout();
   const activeSessionRef = useRef(activeSession);
   const pendingNotificationTapRef = useRef(false);
+  const lastHandledNotifIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     activeSessionRef.current = activeSession;
   }, [activeSession]);
 
-  // listen for notification clicks to bring user back to the workout page
+  const navigateToActiveWorkout = useCallback(() => {
+    // avoid stacking multiple active-workout instances on top of each other
+    if (pathname === '/active-workout') return;
+    router.navigate('/active-workout');
+  }, [pathname, router]);
+
+  // listen for notification clicks to bring user back to the workout page without duplicates
   useEffect(() => {
     Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response) {
+      const notifId = response?.notification?.request?.identifier;
+      if (response && notifId && notifId !== lastHandledNotifIdRef.current) {
+        lastHandledNotifIdRef.current = notifId;
         if (activeSessionRef.current) {
-          router.push('/active-workout');
+          navigateToActiveWorkout();
         } else {
           pendingNotificationTapRef.current = true;
         }
       }
     }).catch(() => {});
 
-    const subscription = Notifications.addNotificationResponseReceivedListener(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const notifId = response?.notification?.request?.identifier;
+      if (notifId) {
+        lastHandledNotifIdRef.current = notifId;
+      }
       if (activeSessionRef.current) {
-        router.push('/active-workout');
+        navigateToActiveWorkout();
       } else {
         pendingNotificationTapRef.current = true;
       }
     });
 
     return () => subscription.remove();
-  }, [router]);
+  }, [navigateToActiveWorkout]);
 
   useEffect(() => {
     if (pendingNotificationTapRef.current && activeSession) {
       pendingNotificationTapRef.current = false;
-      router.push('/active-workout');
+      navigateToActiveWorkout();
     }
-  }, [activeSession, router]);
+  }, [activeSession, navigateToActiveWorkout]);
 
   return (
     <>
@@ -73,7 +88,19 @@ function AppNavigator() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="active-workout"
-          options={{ title: 'Active Workout', headerBackVisible: false }}
+          options={{
+            title: 'Active Workout',
+            headerBackVisible: false,
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => router.navigate('/(tabs)')}
+                style={{ paddingRight: 16, paddingVertical: 6 }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Text style={{ fontSize: 22, color: colors.text, fontWeight: '700' }}>←</Text>
+              </TouchableOpacity>
+            ),
+          }}
         />
         <Stack.Screen
           name="workout-summary"
@@ -94,6 +121,10 @@ function AppNavigator() {
         <Stack.Screen
           name="exercise-picker"
           options={{ title: 'Select Exercise', presentation: 'modal' }}
+        />
+        <Stack.Screen
+          name="workout-compare"
+          options={{ title: 'Compare Workouts' }}
         />
       </Stack>
     </>

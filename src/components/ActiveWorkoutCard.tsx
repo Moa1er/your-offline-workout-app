@@ -51,7 +51,7 @@ export const ActiveWorkoutCard: React.FC = () => {
       <View style={styles.buttonRow}>
         <TouchableOpacity
           style={[styles.resumeButton, { backgroundColor: colors.primary }]}
-          onPress={() => router.push('/active-workout')}
+          onPress={() => router.navigate('/active-workout')}
         >
           <Text style={[styles.resumeText, { color: colors.primaryText }]}>RESUME</Text>
         </TouchableOpacity>

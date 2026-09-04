@@ -1,14 +1,35 @@
 // floating rest timer overlay bar for active workout sessions
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useWorkout } from '../context/WorkoutContext';
 import { useAppTheme } from '../context/ThemeContext';
-import { formatTimerSeconds } from '../utils/timer';
+import { formatTimerSeconds, calculateRemainingSeconds } from '../utils/timer';
 
 export const RestTimerOverlay: React.FC = () => {
-  const { timerState, remainingSeconds, addTimerSeconds, skipTimer } = useWorkout();
+  const { timerState, addTimerSeconds, skipTimer, finishTimer } = useWorkout();
   const { colors } = useAppTheme();
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+
+  // isolate countdown tick inside overlay so the rest of the workout page does not re-render
+  useEffect(() => {
+    if (!timerState) {
+      setRemainingSeconds(0);
+      return;
+    }
+
+    const tick = () => {
+      const rem = calculateRemainingSeconds(timerState.endsAt);
+      setRemainingSeconds(rem);
+      if (rem <= 0) {
+        finishTimer();
+      }
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [timerState?.endsAt, finishTimer]);
 
   if (!timerState || remainingSeconds <= 0) {
     return null;

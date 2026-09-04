@@ -1,4 +1,4 @@
-﻿// record detection utilities for exercise volume records, session volume records, and prs
+// record detection utilities for exercise volume records, session volume records, and prs
 
 import * as SQLite from 'expo-sqlite';
 import { WorkoutSet, PersonalRecord } from '../types/workout';
@@ -70,9 +70,8 @@ export async function getExerciseHistoricalBest(
       const e1rm = calculateE1RM(r.weight_kg, r.reps);
       if (e1rm > maxE1rm) maxE1rm = e1rm;
 
-      if (r.include_in_volume !== 0) {
-        volumeBySession[r.session_id] = (volumeBySession[r.session_id] || 0) + vol;
-      }
+      // accumulate exercise volume records for all completed working sets
+      volumeBySession[r.session_id] = (volumeBySession[r.session_id] || 0) + vol;
     }
   }
 

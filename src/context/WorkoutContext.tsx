@@ -1,6 +1,6 @@
 // active workout context for state logging, auto saving, and rest timers
 
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { WorkoutSession, WorkoutSet } from '../types/workout';
 import { useDatabase } from './DatabaseContext';
@@ -25,6 +25,10 @@ import {
   cancelAllNotifications,
   triggerSetHaptic,
   triggerTimerFinishedHaptic,
+  startNativeRestTimer,
+  stopNativeRestTimer,
+  stopNativeAlarmSound,
+  playNativeCompletionSound,
 } from '../services/notifications';
 
 interface WorkoutContextType {
@@ -44,6 +48,7 @@ interface WorkoutContextType {
   discardCurrentWorkout: () => Promise<void>;
   addTimerSeconds: (seconds: number) => void;
   skipTimer: () => void;
+  finishTimer: () => Promise<void>;
   refreshActiveSession: () => Promise<void>;
 }
 
@@ -64,6 +69,7 @@ const WorkoutContext = createContext<WorkoutContextType>({
   discardCurrentWorkout: async () => {},
   addTimerSeconds: () => {},
   skipTimer: () => {},
+  finishTimer: async () => {},
   refreshActiveSession: async () => {},
 });
 
@@ -77,6 +83,10 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // rest timer state
   const [timerState, setTimerState] = useState<ActiveTimerState | null>(null);
+  const timerStateRef = useRef<ActiveTimerState | null>(null);
+  useEffect(() => {
+    timerStateRef.current = timerState;
+  }, [timerState]);
   const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
   const notificationIdRef = useRef<string | null>(null);
 
@@ -169,7 +179,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   // load active workout session on startup (workout recovery!)
-  const refreshActiveSession = async () => {
+  const refreshActiveSession = useCallback(async () => {
     if (!db || !isReady) return;
     try {
       const active = await getActiveWorkoutSession(db);
@@ -179,7 +189,7 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [db, isReady]);
 
   useEffect(() => {
     activeSessionRef.current = activeSession;
@@ -203,57 +213,53 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   }, [isReady, db]);
 
-  // timer tick interval updating every second in notification bar
-  useEffect(() => {
-    if (!timerState) {
-      return;
+  const finishTimer = useCallback(async () => {
+    const current = timerStateRef.current;
+    if (!current) return;
+    setTimerState(null);
+    timerStateRef.current = null;
+    stopNativeRestTimer();
+    playNativeCompletionSound(settings.timerSound, settings.timerVibration);
+    if (settings.timerVibration) {
+      triggerTimerFinishedHaptic();
     }
-
-    const updateTimer = () => {
-      const remaining = calculateRemainingSeconds(timerState.endsAt);
-      setRemainingSeconds(remaining);
-
-      if (remaining > 0) {
-        // live notification bar update every second
-        updateRestTimerLiveNotification(remaining, timerState.exerciseName);
-      } else {
-        if (settings.hapticFeedback) {
-          triggerTimerFinishedHaptic();
-        }
-        showRestTimerFinishedNotification(timerState.exerciseName, {
-          sound: settings.timerSound,
-          vibrate: settings.timerVibration,
-        });
-        setTimerState(null);
-      }
-    };
-
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
-  }, [timerState, settings.hapticFeedback, settings.timerSound, settings.timerVibration]);
+    await showRestTimerFinishedNotification(current.exerciseName, {
+      sound: settings.timerSound,
+      vibrate: settings.timerVibration,
+    });
+  }, [settings.timerSound, settings.timerVibration]);
 
   // recover timer when app state changes (e.g. background -> active)
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'active' && timerState) {
-        const remaining = calculateRemainingSeconds(timerState.endsAt);
-        setRemainingSeconds(remaining);
-        if (remaining <= 0) {
-          showRestTimerFinishedNotification(timerState.exerciseName, {
-            sound: settings.timerSound,
-            vibrate: settings.timerVibration,
-          });
-          setTimerState(null);
+      if (nextAppState === 'active') {
+        // stop any playing alarm sound when app is focused
+        stopNativeAlarmSound();
+        if (timerStateRef.current) {
+          const remaining = calculateRemainingSeconds(timerStateRef.current.endsAt);
+          if (remaining <= 0) {
+            finishTimer();
+          }
         }
       }
     };
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription.remove();
-  }, [timerState, settings.timerSound, settings.timerVibration]);
+  }, [finishTimer]);
 
-  const startWorkout = async (templateId?: string): Promise<WorkoutSession | null> => {
+  const skipTimer = useCallback(async () => {
+    stopNativeRestTimer();
+    if (notificationIdRef.current) {
+      await cancelNotification(notificationIdRef.current);
+      notificationIdRef.current = null;
+    }
+    await cancelAllNotifications();
+    setTimerState(null);
+    timerStateRef.current = null;
+  }, []);
+
+  const startWorkout = useCallback(async (templateId?: string): Promise<WorkoutSession | null> => {
     if (!db) return null;
 
     // never silently abandon an in-progress workout
@@ -307,85 +313,83 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [db, showConfirm, showAlert, skipTimer]);
 
-  const startRestTimer = async (durationSeconds: number, exerciseName?: string, type: 'SET_REST' | 'EXERCISE_REST' = 'SET_REST') => {
+  const startRestTimer = useCallback((
+    durationSeconds: number,
+    exerciseName?: string,
+    type: 'SET_REST' | 'EXERCISE_REST' = 'SET_REST'
+  ) => {
     if (durationSeconds <= 0) return;
 
-    // clean up any previous timer notifications immediately
-    await cancelAllNotifications();
-    notificationIdRef.current = null;
-
+    // update UI state synchronously in frame 0
     const newTimer = createRestTimer(durationSeconds, type, exerciseName);
     setTimerState(newTimer);
-    setRemainingSeconds(durationSeconds);
+    timerStateRef.current = newTimer;
 
-    const notifId = await scheduleRestNotification(durationSeconds, exerciseName, {
+    // start native status bar chronometer and alarm immediately
+    startNativeRestTimer(newTimer.endsAt, exerciseName, {
       sound: settings.timerSound,
       vibrate: settings.timerVibration,
     });
-    notificationIdRef.current = notifId;
-  };
 
-  const addTimerSeconds = async (sec: number) => {
-    if (!timerState) return;
-    const newEndsAt = timerState.endsAt + sec * 1000;
+    // schedule background fallback notification asynchronously
+    (async () => {
+      try {
+        const notifId = await scheduleRestNotification(durationSeconds, exerciseName, {
+          sound: settings.timerSound,
+          vibrate: settings.timerVibration,
+        });
+        notificationIdRef.current = notifId;
+      } catch (err) {
+        // notification scheduling fallback
+      }
+    })();
+  }, [settings.timerSound, settings.timerVibration]);
+
+  const addTimerSeconds = useCallback(async (sec: number) => {
+    const current = timerStateRef.current;
+    if (!current) return;
+    const newEndsAt = current.endsAt + sec * 1000;
     const remaining = calculateRemainingSeconds(newEndsAt);
 
     if (remaining <= 0) {
-      // timer reached 0 from subtracting seconds
-      if (notificationIdRef.current) {
-        await cancelNotification(notificationIdRef.current);
-        notificationIdRef.current = null;
-      }
-      if (settings.hapticFeedback) {
-        triggerTimerFinishedHaptic();
-      }
-      showRestTimerFinishedNotification(timerState.exerciseName, {
-        sound: settings.timerSound,
-        vibrate: settings.timerVibration,
-      });
-      setTimerState(null);
-      setRemainingSeconds(0);
+      await finishTimer();
       return;
     }
 
-    const newDuration = Math.max(1, timerState.durationSeconds + sec);
-    setTimerState({
-      ...timerState,
+    const newDuration = Math.max(1, current.durationSeconds + sec);
+    const newTimer = {
+      ...current,
       endsAt: newEndsAt,
       durationSeconds: newDuration,
-    });
-    setRemainingSeconds(remaining);
+    };
+    setTimerState(newTimer);
+    timerStateRef.current = newTimer;
 
-    // keep the local notification in sync with the updated end time
+    startNativeRestTimer(newEndsAt, current.exerciseName, {
+      sound: settings.timerSound,
+      vibrate: settings.timerVibration,
+    });
+
     if (notificationIdRef.current) {
       await cancelNotification(notificationIdRef.current);
       notificationIdRef.current = null;
     }
-    const notifId = await scheduleRestNotification(remaining, timerState.exerciseName, {
+    const notifId = await scheduleRestNotification(remaining, current.exerciseName, {
       sound: settings.timerSound,
       vibrate: settings.timerVibration,
     });
     notificationIdRef.current = notifId;
-  };
+  }, [finishTimer, settings.timerSound, settings.timerVibration]);
 
-  const skipTimer = async () => {
-    if (notificationIdRef.current) {
-      await cancelNotification(notificationIdRef.current);
-      notificationIdRef.current = null;
-    }
-    await cancelAllNotifications();
-    setTimerState(null);
-    setRemainingSeconds(0);
-  };
-
-  const toggleSetCompleted = async (setId: string, exerciseName?: string) => {
+  const toggleSetCompleted = useCallback(async (setId: string, exerciseName?: string) => {
+    // silence any lingering alarm immediately
+    stopNativeAlarmSound();
     const session = activeSessionRef.current;
     if (!session || !db) return;
 
     let targetSet: WorkoutSet | null = null;
-    let exerciseId = '';
     let isAllSetsCompleteInExercise = false;
     let exerciseRestSet: number | undefined;
     let exerciseRestAfter: number | undefined;
@@ -394,14 +398,13 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const updatedExercises = session.exercises.map((se) => {
       const setIndex = se.sets.findIndex((s) => s.id === setId);
       if (setIndex !== -1) {
-        exerciseId = se.exerciseId;
         exerciseRestSet = se.restBetweenSetsSeconds;
         exerciseRestAfter = se.restAfterExerciseSeconds;
         const current = se.sets[setIndex];
         const nextCompleted = !current.completed;
         let updatedItem: WorkoutSet = { ...current, completed: nextCompleted };
 
-        // if the user completed a set without typing values, use the previous performance
+        // if the user completed a set without typing values, use previous performance
         if (nextCompleted && (updatedItem.weightKg <= 0 || updatedItem.reps <= 0)) {
           const prev = se.previousPerformance?.[setIndex];
           if (prev) {
@@ -426,18 +429,21 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!targetSet) return;
     const completedSet: WorkoutSet = targetSet;
 
-    // cancel any pending debounced write so this full set state wins immediately
+    // cancel any pending debounced write and apply session update immediately
     cancelPendingSetSave(setId);
     setActiveSessionRef({ ...session, exercises: updatedExercises });
 
-    // save set update to sqlite immediately
-    await saveSetUpdate(db, completedSet);
+    // trigger instant haptic feedback
+    if (completedSet.completed && settings.hapticFeedback) {
+      triggerSetHaptic();
+    }
+
+    // save set update to sqlite in background without blocking UI thread
+    saveSetUpdate(db, completedSet).catch((err) =>
+      console.error('error saving set update:', err)
+    );
 
     if (completedSet.completed) {
-      if (settings.hapticFeedback) {
-        triggerSetHaptic();
-      }
-
       // start rest timer automatically
       const setRestDuration = exerciseRestSet || settings.defaultSetRestSeconds;
       const exerciseRestDuration = exerciseRestAfter || settings.defaultExerciseRestSeconds;
@@ -450,9 +456,9 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // cancel running rest timer if set was unchecked
       skipTimer();
     }
-  };
+  }, [db, settings.hapticFeedback, settings.defaultSetRestSeconds, settings.defaultExerciseRestSeconds, startRestTimer, skipTimer]);
 
-  const updateSet = async (setId: string, updates: Partial<WorkoutSet>) => {
+  const updateSet = useCallback(async (setId: string, updates: Partial<WorkoutSet>) => {
     const session = activeSessionRef.current;
     if (!session || !db) return;
 
@@ -475,9 +481,9 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setActiveSessionRef({ ...session, exercises: updatedExercises });
     scheduleSetSave(saveSet);
-  };
+  }, [db]);
 
-  const addSet = async (sessionExerciseId: string, defaultWeight: number = 0, defaultReps: number = 10) => {
+  const addSet = useCallback(async (sessionExerciseId: string, defaultWeight: number = 0, defaultReps: number = 10) => {
     const session = activeSessionRef.current;
     if (!session || !db) return;
 
@@ -497,9 +503,9 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
 
     setActiveSessionRef({ ...session, exercises: updatedExercises });
-  };
+  }, [db]);
 
-  const deleteSet = async (setId: string) => {
+  const deleteSet = useCallback(async (setId: string) => {
     const session = activeSessionRef.current;
     if (!session || !db) return;
 
@@ -512,9 +518,9 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }));
 
     setActiveSessionRef({ ...session, exercises: updatedExercises });
-  };
+  }, [db]);
 
-  const updateExerciseNotes = async (sessionExerciseId: string, notes: string) => {
+  const updateExerciseNotes = useCallback(async (sessionExerciseId: string, notes: string) => {
     const session = activeSessionRef.current;
     if (!session || !db) return;
 
@@ -527,9 +533,9 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setActiveSessionRef({ ...session, exercises: updatedExercises });
     scheduleExerciseSave(sessionExerciseId, { notes });
-  };
+  }, [db]);
 
-  const updateExerciseRestTimers = async (
+  const updateExerciseRestTimers = useCallback(async (
     sessionExerciseId: string,
     restBetweenSetsSeconds?: number,
     restAfterExerciseSeconds?: number
@@ -553,9 +559,9 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ...(restBetweenSetsSeconds !== undefined ? { restBetweenSetsSeconds } : {}),
       ...(restAfterExerciseSeconds !== undefined ? { restAfterExerciseSeconds } : {}),
     });
-  };
+  }, [db]);
 
-  const toggleExerciseIncludeInVolume = async (sessionExerciseId: string) => {
+  const toggleExerciseIncludeInVolume = useCallback(async (sessionExerciseId: string) => {
     const session = activeSessionRef.current;
     if (!session || !db) return;
 
@@ -570,9 +576,9 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setActiveSessionRef({ ...session, exercises: updatedExercises });
     scheduleExerciseSave(sessionExerciseId, { includeInVolume: nextVal });
-  };
+  }, [db]);
 
-  const finishCurrentWorkout = async (notes?: string) => {
+  const finishCurrentWorkout = useCallback(async (notes?: string) => {
     const session = activeSessionRef.current;
     if (!session || !db) return;
 
@@ -581,9 +587,9 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await finishWorkoutSession(db, session.id, notes);
     setActiveSessionRef(null);
     skipTimer();
-  };
+  }, [db, skipTimer]);
 
-  const discardCurrentWorkout = async () => {
+  const discardCurrentWorkout = useCallback(async () => {
     const session = activeSessionRef.current;
     if (!session || !db) return;
 
@@ -598,30 +604,53 @@ export const WorkoutProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await discardActiveWorkout(db, session.id);
     setActiveSessionRef(null);
     skipTimer();
-  };
+  }, [db, skipTimer]);
+
+  const contextValue = useMemo(
+    () => ({
+      activeSession,
+      isLoading,
+      timerState,
+      remainingSeconds,
+      startWorkout,
+      updateSet,
+      toggleSetCompleted,
+      addSet,
+      deleteSet,
+      updateExerciseNotes,
+      updateExerciseRestTimers,
+      toggleExerciseIncludeInVolume,
+      finishCurrentWorkout,
+      discardCurrentWorkout,
+      addTimerSeconds,
+      skipTimer,
+      finishTimer,
+      refreshActiveSession,
+    }),
+    [
+      activeSession,
+      isLoading,
+      timerState,
+      remainingSeconds,
+      startWorkout,
+      updateSet,
+      toggleSetCompleted,
+      addSet,
+      deleteSet,
+      updateExerciseNotes,
+      updateExerciseRestTimers,
+      toggleExerciseIncludeInVolume,
+      finishCurrentWorkout,
+      discardCurrentWorkout,
+      addTimerSeconds,
+      skipTimer,
+      finishTimer,
+      refreshActiveSession,
+    ]
+  );
 
   return (
-    <WorkoutContext.Provider
-      value={{
-        activeSession,
-        isLoading,
-        timerState,
-        remainingSeconds,
-        startWorkout,
-        updateSet,
-        toggleSetCompleted,
-        addSet,
-        deleteSet,
-        updateExerciseNotes,
-        updateExerciseRestTimers,
-        toggleExerciseIncludeInVolume,
-        finishCurrentWorkout,
-        discardCurrentWorkout,
-        addTimerSeconds,
-        skipTimer,
-        refreshActiveSession,
-      }}
-    >
+    <WorkoutContext.Provider value={contextValue}>
       {children}
     </WorkoutContext.Provider>
   );

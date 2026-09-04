@@ -2,19 +2,21 @@
 
 import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
-import { Platform, Vibration } from 'react-native';
+import { Platform, Vibration, NativeModules } from 'react-native';
+
+const { TimerNotificationModule } = NativeModules;
 
 export const REST_TIMER_NOTIFICATION_ID = 'ACTIVE_REST_TIMER';
 export const REST_TIMER_COMPLETE_ID = 'REST_TIMER_COMPLETE';
 
-const LIVE_CHANNEL_ID = 'rest_timer_live_v6';
-const ALERTS_CHANNEL_ID = 'rest_timer_alerts_v6';
+const LIVE_CHANNEL_ID = 'rest_timer_live_v9';
+const ALERTS_CHANNEL_ID = 'rest_timer_alerts_v10';
 
 // configure notification handler for local alerts
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    shouldPlaySound: true,
+    shouldPlaySound: false,
     shouldSetBadge: false,
     shouldShowBanner: true,
     shouldShowList: true,
@@ -40,11 +42,18 @@ export async function setupNotificationPermissions(): Promise<boolean> {
       await Notifications.deleteNotificationChannelAsync('rest_timer_alerts_v4');
       await Notifications.deleteNotificationChannelAsync('rest_timer_live_v5');
       await Notifications.deleteNotificationChannelAsync('rest_timer_alerts_v5');
+      await Notifications.deleteNotificationChannelAsync('rest_timer_live_v6');
+      await Notifications.deleteNotificationChannelAsync('rest_timer_alerts_v6');
+      await Notifications.deleteNotificationChannelAsync('rest_timer_live_v7');
+      await Notifications.deleteNotificationChannelAsync('rest_timer_alerts_v7');
+      await Notifications.deleteNotificationChannelAsync('rest_timer_live_v8');
+      await Notifications.deleteNotificationChannelAsync('rest_timer_alerts_v8');
+      await Notifications.deleteNotificationChannelAsync('rest_timer_alerts_v9');
     } catch {}
 
     await Notifications.setNotificationChannelAsync(LIVE_CHANNEL_ID, {
       name: 'Rest Timer Live Countdown',
-      importance: Notifications.AndroidImportance.LOW,
+      importance: Notifications.AndroidImportance.DEFAULT,
       enableVibrate: false,
       sound: undefined,
       lightColor: '#FF2D95',
@@ -54,8 +63,8 @@ export async function setupNotificationPermissions(): Promise<boolean> {
     await Notifications.setNotificationChannelAsync(ALERTS_CHANNEL_ID, {
       name: 'Rest Timer Alerts',
       importance: Notifications.AndroidImportance.MAX,
-      sound: 'default',
-      vibrationPattern: [0, 500, 250, 500],
+      sound: undefined,
+      vibrationPattern: [0, 100, 70, 100, 70, 250],
       lightColor: '#FF2D95',
       enableVibrate: true,
       showBadge: false,
@@ -130,8 +139,8 @@ export async function showRestTimerFinishedNotification(
         title,
         body,
         color: '#FF2D95',
-        sound: options?.sound !== false ? 'default' : undefined,
-        ...(options?.vibrate !== false ? { vibrate: [0, 500, 250, 500] } : {}),
+        sound: undefined,
+        ...(options?.vibrate !== false ? { vibrate: [0, 100, 70, 100, 70, 250] } : {}),
         priority: Notifications.AndroidNotificationPriority.HIGH,
         data: { channelId: ALERTS_CHANNEL_ID },
       },
@@ -141,6 +150,59 @@ export async function showRestTimerFinishedNotification(
     });
   } catch (error) {
     console.error('failed to show timer completion notification:', error);
+  }
+}
+
+/**
+ * cancels any active or completed rest timer notifications
+ */
+export function startNativeRestTimer(
+  endsAtMillis: number,
+  exerciseName?: string,
+  options?: { sound?: boolean; vibrate?: boolean }
+): void {
+  if (Platform.OS === 'android' && TimerNotificationModule?.startTimerNotification) {
+    try {
+      TimerNotificationModule.startTimerNotification(
+        endsAtMillis,
+        exerciseName || '',
+        options?.sound !== false,
+        options?.vibrate !== false
+      );
+    } catch (err) {
+      // ignore native module error and fallback
+    }
+  }
+}
+
+export function stopNativeAlarmSound(): void {
+  if (Platform.OS === 'android' && TimerNotificationModule?.stopAlarmSound) {
+    try {
+      TimerNotificationModule.stopAlarmSound();
+    } catch (err) {
+      // ignore native stop error
+    }
+  }
+}
+
+export function stopNativeRestTimer(): void {
+  if (Platform.OS === 'android' && TimerNotificationModule?.stopTimerNotification) {
+    try {
+      TimerNotificationModule.stopTimerNotification();
+    } catch (err) {
+      // ignore native module error
+    }
+  }
+  stopNativeAlarmSound();
+}
+
+export function playNativeCompletionSound(sound: boolean = true, vibrate: boolean = true): void {
+  if (Platform.OS === 'android' && TimerNotificationModule?.playCompletionSound) {
+    try {
+      TimerNotificationModule.playCompletionSound(sound, vibrate);
+    } catch (err) {
+      // ignore native sound error
+    }
   }
 }
 
@@ -191,8 +253,7 @@ export async function scheduleRestNotification(
 
     const title = 'REST COMPLETE! 🔔';
     const body = exerciseName ? `${exerciseName} - Timer is done! Start your next set!` : 'Timer is done! Start your next set!';
-    const sound = options?.sound !== false ? 'default' : undefined;
-    const vibrate = options?.vibrate === false ? undefined : [0, 500, 250, 500];
+    const vibrate = options?.vibrate === false ? undefined : [0, 100, 70, 100, 70, 250];
 
     const notificationId = await Notifications.scheduleNotificationAsync({
       identifier: REST_TIMER_COMPLETE_ID,
@@ -200,7 +261,7 @@ export async function scheduleRestNotification(
         title,
         body,
         color: '#FF2D95',
-        sound,
+        sound: undefined,
         ...(vibrate ? { vibrate } : {}),
         data: { channelId: ALERTS_CHANNEL_ID },
       },
@@ -235,8 +296,8 @@ export async function triggerSetHaptic(): Promise<void> {
 export async function triggerTimerFinishedHaptic(): Promise<void> {
   if (Platform.OS === 'web') return;
   try {
-    // real hardware vibration for noticeable gym alerts
-    Vibration.vibrate([0, 500, 250, 500]);
+    // 3-pulse vibration matching 0.6s gym timer beep
+    Vibration.vibrate([0, 100, 70, 100, 70, 250]);
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
   } catch {
     console.log('haptics unavailable');

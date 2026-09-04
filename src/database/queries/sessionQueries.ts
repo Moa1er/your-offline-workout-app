@@ -630,3 +630,146 @@ export async function deleteSession(
   await db.runAsync('DELETE FROM workout_sessions WHERE id = ?;', [id]);
   await recalculateAllPersonalRecords(db);
 }
+
+export interface UpdateWorkoutSessionData {
+  name: string;
+  notes?: string | null;
+  startedAt?: string;
+  finishedAt?: string | null;
+  exercises: {
+    id: string;
+    exerciseId: string;
+    order: number;
+    includeInVolume?: boolean;
+    restBetweenSetsSeconds?: number;
+    restAfterExerciseSeconds?: number;
+    notes?: string | null;
+    sets: {
+      id: string;
+      setNumber: number;
+      type: SetType;
+      weightKg: number;
+      reps: number;
+      rir?: number | null;
+      completed: boolean;
+      completedAt?: string | null;
+    }[];
+  }[];
+}
+
+// update all values of a historical completed workout and recalculate prs
+export async function updateCompletedWorkoutSession(
+  db: SQLite.SQLiteDatabase,
+  sessionId: string,
+  data: UpdateWorkoutSessionData
+): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    // 1. update session meta details
+    await db.runAsync(
+      `UPDATE workout_sessions
+       SET name = ?, notes = ?, started_at = COALESCE(?, started_at), finished_at = ?
+       WHERE id = ?;`,
+      [data.name, data.notes || null, data.startedAt || null, data.finishedAt || null, sessionId]
+    );
+
+    // 2. sync session exercises
+    const existingSes = await db.getAllAsync<{ id: string }>(
+      'SELECT id FROM workout_session_exercises WHERE session_id = ?;',
+      [sessionId]
+    );
+    const existingSeIds = new Set(existingSes.map((r) => r.id));
+    const currentSeIds = new Set(data.exercises.map((e) => e.id));
+
+    // remove deleted exercises and their sets
+    for (const seId of existingSeIds) {
+      if (!currentSeIds.has(seId)) {
+        await db.runAsync('DELETE FROM sets WHERE session_exercise_id = ?;', [seId]);
+        await db.runAsync('DELETE FROM workout_session_exercises WHERE id = ?;', [seId]);
+      }
+    }
+
+    // 3. sync current exercises and their sets
+    for (const ex of data.exercises) {
+      if (existingSeIds.has(ex.id)) {
+        await db.runAsync(
+          `UPDATE workout_session_exercises
+           SET exercise_order = ?, include_in_volume = ?, notes = ?
+           WHERE id = ?;`,
+          [ex.order, ex.includeInVolume !== false ? 1 : 0, ex.notes || null, ex.id]
+        );
+      } else {
+        await db.runAsync(
+          `INSERT INTO workout_session_exercises (id, session_id, exercise_id, exercise_order, include_in_volume, rest_between_sets_seconds, rest_after_exercise_seconds, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+          [
+            ex.id,
+            sessionId,
+            ex.exerciseId,
+            ex.order,
+            ex.includeInVolume !== false ? 1 : 0,
+            ex.restBetweenSetsSeconds ?? 120,
+            ex.restAfterExerciseSeconds ?? 120,
+            ex.notes || null,
+          ]
+        );
+      }
+
+      // sync sets for this exercise
+      const existingSets = await db.getAllAsync<{ id: string }>(
+        'SELECT id FROM sets WHERE session_exercise_id = ?;',
+        [ex.id]
+      );
+      const existingSetIds = new Set(existingSets.map((s) => s.id));
+      const currentSetIds = new Set(ex.sets.map((s) => s.id));
+
+      // delete removed sets
+      for (const setId of existingSetIds) {
+        if (!currentSetIds.has(setId)) {
+          await db.runAsync('DELETE FROM sets WHERE id = ?;', [setId]);
+        }
+      }
+
+      // insert or update sets
+      for (const st of ex.sets) {
+        const completedAt = st.completed ? (st.completedAt || data.finishedAt || new Date().toISOString()) : null;
+        if (existingSetIds.has(st.id)) {
+          await db.runAsync(
+            `UPDATE sets
+             SET set_number = ?, type = ?, weight_kg = ?, reps = ?, rir = ?, completed = ?, completed_at = ?
+             WHERE id = ?;`,
+            [
+              st.setNumber,
+              st.type,
+              st.weightKg,
+              st.reps,
+              st.rir ?? null,
+              st.completed ? 1 : 0,
+              completedAt,
+              st.id,
+            ]
+          );
+        } else {
+          await db.runAsync(
+            `INSERT INTO sets (id, session_exercise_id, set_number, type, weight_kg, reps, rir, completed, completed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+            [
+              st.id,
+              ex.id,
+              st.setNumber,
+              st.type,
+              st.weightKg,
+              st.reps,
+              st.rir ?? null,
+              st.completed ? 1 : 0,
+              completedAt,
+            ]
+          );
+        }
+      }
+    }
+  });
+
+  // 4. recalculate all personal records across all sessions
+  await recalculateAllPersonalRecords(db);
+}
+

@@ -87,14 +87,14 @@ export default function WorkoutHomeScreen() {
   const handleStartTemplate = async (templateId: string) => {
     const sess = await startWorkout(templateId);
     if (sess) {
-      router.push('/active-workout');
+      router.navigate('/active-workout');
     }
   };
 
   const handleStartCustom = async () => {
     const sess = await startWorkout();
     if (sess) {
-      router.push('/active-workout');
+      router.navigate('/active-workout');
     }
   };
 

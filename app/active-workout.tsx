@@ -8,6 +8,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useWorkout } from '../src/context/WorkoutContext';
@@ -53,6 +54,16 @@ export default function ActiveWorkoutScreen() {
       deactivateKeepAwake('active-workout');
     };
   }, [settings.keepScreenAwake]);
+
+  // handle android back gesture and hardware button to return to menu cleanly
+  useEffect(() => {
+    const onBackPress = () => {
+      router.navigate('/(tabs)');
+      return true;
+    };
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [router]);
 
   if (!activeSession) {
     return (
@@ -125,8 +136,8 @@ export default function ActiveWorkoutScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.content}
-        removeClippedSubviews={true}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {/* session stats header banner */}
         <View style={[styles.headerBanner, { backgroundColor: colors.card, borderColor: colors.border }]}>

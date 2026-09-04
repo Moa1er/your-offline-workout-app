@@ -1,12 +1,13 @@
 // inline exercise logging table with ultra-fast local state set inputs and record modal
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Keyboard, Pressable } from 'react-native';
 import { SessionExercise, WorkoutSet, SetType } from '../types/workout';
 import { useWorkout } from '../context/WorkoutContext';
 import { useSettings } from '../context/SettingsContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { useDatabase } from '../context/DatabaseContext';
+import { useAppAlert } from '../context/AlertContext';
 import { convertKgToLb, convertLbToKg } from '../utils/calculations';
 import { getExerciseHistoricalBest, ExerciseHistoricalBest, HitRecordInfo } from '../utils/recordDetector';
 import { RecordDetailModal } from './RecordDetailModal';
@@ -41,6 +42,16 @@ const SetRowItem: React.FC<SetRowItemProps> = React.memo(({
   // local independent string states for instant zero-lag typing
   const [weightText, setWeightText] = useState(() => (displayWeight > 0 ? String(displayWeight) : ''));
   const [repsText, setRepsText] = useState(() => (set.reps > 0 ? String(set.reps) : ''));
+  const [isWeightFocused, setIsWeightFocused] = useState(false);
+  const [isRepsFocused, setIsRepsFocused] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(set.completed);
+  const weightInputRef = useRef<TextInput>(null);
+  const repsInputRef = useRef<TextInput>(null);
+
+  // sync optimistic state with set.completed prop
+  useEffect(() => {
+    setIsCompleted(set.completed);
+  }, [set.completed]);
 
   const isFocusedRef = useRef<{ weight: boolean; reps: boolean }>({
     weight: false,
@@ -137,7 +148,7 @@ const SetRowItem: React.FC<SetRowItemProps> = React.memo(({
       style={[
         styles.tableRow,
         { borderBottomColor: colors.border },
-        set.completed && { backgroundColor: '#2563eb12' },
+        isCompleted && { backgroundColor: `${colors.secondary}15` },
       ]}
     >
       {/* set number cell with normal white/input background like other cells */}
@@ -184,60 +195,98 @@ const SetRowItem: React.FC<SetRowItemProps> = React.memo(({
         </Text>
       </TouchableOpacity>
 
-      {/* weight input */}
-      <View style={{ flex: 1 }}>
+      {/* weight input with centered cursor and ghost placeholder */}
+      <View style={styles.numericInputWrapper}>
+        {!weightText && (
+          <Text
+            pointerEvents="none"
+            style={[styles.placeholderText, { color: colors.textSubtle }]}
+          >
+            {prevWeightDisplay}
+          </Text>
+        )}
         <TextInput
+          ref={weightInputRef}
           style={[
             styles.numericInput,
-            { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text },
+            {
+              backgroundColor: colors.inputBg,
+              borderColor: isWeightFocused ? colors.primary : colors.inputBorder,
+              color: colors.text,
+            },
           ]}
           keyboardType="numeric"
           textAlign="center"
           textAlignVertical="center"
-          scrollEnabled={false}
           value={weightText}
+          selectTextOnFocus={true}
+          cursorColor={colors.primary}
           onFocus={() => {
             isFocusedRef.current.weight = true;
+            setIsWeightFocused(true);
           }}
           onChangeText={handleWeightChange}
-          onBlur={handleWeightBlur}
-          placeholder={prevWeightDisplay}
-          placeholderTextColor={colors.textSubtle}
+          onBlur={() => {
+            handleWeightBlur();
+            setIsWeightFocused(false);
+          }}
         />
       </View>
 
-      {/* reps input */}
-      <View style={{ flex: 1 }}>
+      {/* reps input with centered cursor and ghost placeholder */}
+      <View style={styles.numericInputWrapper}>
+        {!repsText && (
+          <Text
+            pointerEvents="none"
+            style={[styles.placeholderText, { color: colors.textSubtle }]}
+          >
+            {prevRepsDisplay}
+          </Text>
+        )}
         <TextInput
+          ref={repsInputRef}
           style={[
             styles.numericInput,
-            { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text },
+            {
+              backgroundColor: colors.inputBg,
+              borderColor: isRepsFocused ? colors.primary : colors.inputBorder,
+              color: colors.text,
+            },
           ]}
           keyboardType="numeric"
           textAlign="center"
           textAlignVertical="center"
-          scrollEnabled={false}
           value={repsText}
+          selectTextOnFocus={true}
+          cursorColor={colors.primary}
           onFocus={() => {
             isFocusedRef.current.reps = true;
+            setIsRepsFocused(true);
           }}
           onChangeText={handleRepsChange}
-          onBlur={handleRepsBlur}
-          placeholder={prevRepsDisplay}
-          placeholderTextColor={colors.textSubtle}
+          onBlur={() => {
+            handleRepsBlur();
+            setIsRepsFocused(false);
+          }}
         />
       </View>
 
-      {/* single-tap complete checkmark with blue active background & keyboard dismiss */}
+      {/* single-tap complete checkmark with instant optimistic feedback */}
       <TouchableOpacity
+        activeOpacity={0.6}
+        delayPressIn={0}
         style={[
           styles.checkBtn,
           { backgroundColor: colors.cardAlt, borderColor: colors.border },
-          set.completed && { backgroundColor: '#2563eb', borderColor: '#2563eb' },
+          isCompleted && { backgroundColor: colors.secondary, borderColor: colors.secondary },
         ]}
         onPress={() => {
-          // dismiss keyboard on checkmark tap
-          Keyboard.dismiss();
+          // immediate optimistic visual response
+          const next = !isCompleted;
+          setIsCompleted(next);
+          if (isFocusedRef.current.weight || isFocusedRef.current.reps) {
+            Keyboard.dismiss();
+          }
           onToggleCompleted(set.id, exerciseName);
         }}
       >
@@ -245,7 +294,7 @@ const SetRowItem: React.FC<SetRowItemProps> = React.memo(({
           style={[
             styles.checkBtnText,
             { color: colors.textMuted },
-            set.completed && { color: '#ffffff', fontWeight: '900' },
+            isCompleted && { color: colors.isDark ? '#000000' : '#ffffff', fontWeight: '900' },
           ]}
         >
           ✓
@@ -279,6 +328,7 @@ export const ExerciseSetTable: React.FC<ExerciseSetTableProps> = React.memo(({ e
   const { settings } = useSettings();
   const { colors } = useAppTheme();
   const { db } = useDatabase();
+  const { showAlert } = useAppAlert();
 
   const [historicalBest, setHistoricalBest] = useState<ExerciseHistoricalBest | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<HitRecordInfo | null>(null);
@@ -307,9 +357,9 @@ export const ExerciseSetTable: React.FC<ExerciseSetTableProps> = React.memo(({ e
     .filter((s) => s.type !== 'WARMUP')
     .reduce((sum, s) => sum + s.weightKg * s.reps, 0);
 
-  // compute current session volume accumulating as user checks sets
+  // compute current session volume accumulating as user checks sets (exercise own volume always counts completed sets)
   const currentVolumeKg = exercise.sets
-    .filter((s) => s.completed && s.type !== 'WARMUP' && isIncludedInVolume)
+    .filter((s) => s.completed && s.type !== 'WARMUP')
     .reduce((sum, s) => sum + s.weightKg * s.reps, 0);
 
   const displayPrevVol = Math.round(isLb ? convertKgToLb(previousVolumeKg) : previousVolumeKg);
@@ -323,16 +373,40 @@ export const ExerciseSetTable: React.FC<ExerciseSetTableProps> = React.memo(({ e
     } else if (displayCurrVol > displayPrevVol) {
       currentVolColor = '#10b981';
     } else {
-      currentVolColor = '#2563eb';
+      currentVolColor = colors.secondary;
     }
   } else if (displayCurrVol > 0) {
     currentVolColor = '#10b981';
   }
 
-  const isVolumeRecord =
-    historicalBest &&
+  // trigger best volume trophy when beating previous session or all-time best
+  const hasBeatenPrevious = previousVolumeKg > 0 && currentVolumeKg > previousVolumeKg;
+  const hasBeatenAllTime =
+    historicalBest !== null &&
     historicalBest.maxExerciseVolume > 0 &&
     currentVolumeKg > historicalBest.maxExerciseVolume;
+  const isVolumeRecord = currentVolumeKg > 0 && (hasBeatenAllTime || hasBeatenPrevious);
+
+  const benchmarkVolume = hasBeatenAllTime
+    ? (historicalBest?.maxExerciseVolume ?? 0)
+    : previousVolumeKg;
+  const recordTitle = hasBeatenAllTime ? 'All-Time Exercise Volume Record' : 'Session Volume Record';
+  const recordBadge = hasBeatenAllTime ? '🏆 ALL-TIME BEST' : '🏆 SESSION BEST';
+
+  const handleExplainVolume = () => {
+    const unit = isLb ? 'lb' : 'kg';
+    showAlert({
+      title: 'Volume Insights (P / C)',
+      icon: '📊',
+      message:
+        `• P (Previous): ${displayPrevVol} ${unit}\n` +
+        `Total working volume (weight × reps) completed for this exercise in your previous workout.\n\n` +
+        `• C (Current): ${displayCurrVol} ${unit}\n` +
+        `Accumulated working volume in today's session so far.\n\n` +
+        `Exceeding 'P' achieves progressive overload for this exercise!`,
+      buttons: [{ text: 'Got it', style: 'default' }],
+    });
+  };
 
   const changeSetRest = (delta: number) => {
     const next = Math.max(0, setRestSec + delta);
@@ -366,14 +440,18 @@ export const ExerciseSetTable: React.FC<ExerciseSetTableProps> = React.memo(({ e
 
         <View style={styles.headerRight}>
           {/* previous and current volume comparison pill */}
-          <View style={[styles.volumePill, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}>
+          <TouchableOpacity
+            style={[styles.volumePill, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}
+            onPress={handleExplainVolume}
+            activeOpacity={0.7}
+          >
             <Text style={[styles.volumeLabel, { color: colors.textMuted }]}>
               P: <Text style={{ color: colors.text, fontWeight: '700' }}>{displayPrevVol}</Text>
             </Text>
             <Text style={[styles.volumeLabel, { color: colors.textMuted, marginLeft: 8 }]}>
               C: <Text style={{ color: currentVolColor, fontWeight: '800' }}>{displayCurrVol}</Text>
             </Text>
-          </View>
+          </TouchableOpacity>
 
           {/* celebratory volume record badge */}
           {isVolumeRecord && (
@@ -382,15 +460,14 @@ export const ExerciseSetTable: React.FC<ExerciseSetTableProps> = React.memo(({ e
               onPress={() =>
                 setSelectedRecord({
                   type: 'EXERCISE_VOLUME',
-                  title: 'Exercise Volume Record',
-                  badge: '🏆 BEST VOLUME',
+                  title: recordTitle,
+                  badge: recordBadge,
                   exerciseName: exercise.exerciseName,
                   currentValue: currentVolumeKg,
-                  previousBest: historicalBest?.maxExerciseVolume ?? 0,
-                  improvement: currentVolumeKg - (historicalBest?.maxExerciseVolume ?? 0),
+                  previousBest: benchmarkVolume,
+                  improvement: currentVolumeKg - benchmarkVolume,
                   improvementPercent:
-                    ((currentVolumeKg - (historicalBest?.maxExerciseVolume ?? 0)) /
-                      (historicalBest?.maxExerciseVolume || 1)) *
+                    ((currentVolumeKg - benchmarkVolume) / (benchmarkVolume || 1)) *
                     100,
                 })
               }
@@ -676,6 +753,20 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontWeight: '900',
     fontSize: 12,
+  },
+  numericInputWrapper: {
+    flex: 1,
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  placeholderText: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '700',
+    zIndex: 1,
   },
   numericInput: {
     height: 34,
